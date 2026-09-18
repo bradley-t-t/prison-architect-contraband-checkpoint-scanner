@@ -15,9 +15,9 @@
 -- A prisoner is probed as they come in, which hurts a little: a small
 -- injury, once per visit.
 --
--- The game will not search a crate in someone's arms, so whoever carries an
--- unsearched one into the room is made to set it down, and it is searched
--- on the floor.
+-- The game will not search anything in someone's arms, so whoever carries
+-- an unsearched crate into the room, or escorts an unsearched prisoner into
+-- it, is made to let go, and the search happens in the room.
 --
 -- Until their search is done nobody leaves. There is no door to hold shut,
 -- so the machine holds the person instead: anyone unsearched found outside
@@ -105,7 +105,8 @@ local scanned = false
 --     searched, marked, requested, ownName, seen, carrier (a crate's) }
 local records = {}
 -- Each guard's job as last seen, keyed by guard id: { id, work = seconds
--- stood against each person, keyed by their id }.
+-- stood against each person, dist = that time weighted by how far they were
+-- from where the guard was going, both keyed by the person's id }.
 local guardJobs = {}
 local guards = {}
 local lastProgress = 0
@@ -302,8 +303,9 @@ local function putBack(record)
     log(record.kind .. " " .. tostring(record.id) .. " put back")
 end
 
--- Makes whoever is carrying a crate set it down where they stand. The game
--- will not search a crate in someone's arms, so it is searched on the floor.
+-- Makes whoever is carrying a crate, or escorting a prisoner, let go of it
+-- where they stand. The game will not search anything in someone's arms, so
+-- it is searched standing in the room.
 -- This is what the game's own drop does to the two of them: neither holds
 -- the other any more.
 local function setDown(record, carrier)
@@ -374,15 +376,24 @@ local function scanPeople()
                     record.carrier = carrier ~= nil and carrierId or nil
                     if inside(x, y) then
                         record.inX, record.inY = x, y
-                        if carrier ~= nil and held(record) then
-                            setDown(record, carrier)
-                        end
                     end
                 elseif records[id] ~= nil then
                     local record = note(id, obj, kind, x, y)
                     record.carrier = carrierId >= 0 and carrierId or nil
                     outside[id] = true
                 end
+            end
+        end
+    end
+    -- Nothing in anyone's arms can be searched, and that goes for a
+    -- prisoner under escort as much as for a crate: the game's search job
+    -- fails for as long as they are carried. Whoever carries someone or
+    -- something still to be searched lets go of it in the room.
+    for id, record in pairs(records) do
+        if held(record) and not outside[id] and record.inX ~= nil then
+            local carrier = records[number(Get(record.obj, "CarrierId.i"), -1)]
+            if carrier ~= nil then
+                setDown(record, carrier)
             end
         end
     end
@@ -473,28 +484,33 @@ local function requestSearches(pending)
     lastRequest = clock
 end
 
--- A guard's job has ended. The work they did is kept by who they stood
--- against, so the search goes to whoever had the most of it, if that was a
--- search's worth: ten seconds for a person, five for a crate.
+-- A guard's job has ended. The time they spent at it is kept for everyone
+-- they could have been searching, with how far each was from where the
+-- guard was going. A person's search takes ten seconds and a crate's five,
+-- so the length of the job says which it was: a full-length job was a
+-- person's if any person fits, and a crate's only if none does. Among those
+-- who fit, the one who was nearest to where the guard was going has it.
 local function creditSearch(track, pending)
-    local best, bestWork = nil, 0
-    for id, work in pairs(track.work) do
-        if work > bestWork then
-            best, bestWork = id, work
+    local best, bestAt, bestDist, bestCrate = nil, nil, nil, nil
+    for i, record in ipairs(pending) do
+        local work = track.work[record.id] or 0
+        local crate = isCrateKind(record.kind)
+        local needed = crate and SEARCH_TIME_CRATE or SEARCH_TIME_ENTITY
+        if work >= needed - SEARCH_SLACK then
+            local d = track.dist[record.id] / work
+            local better = best == nil
+                or (bestCrate and not crate)
+                or (bestCrate == crate and d < bestDist)
+            if better then
+                best, bestAt, bestDist, bestCrate = record, i, d, crate
+            end
         end
     end
-    for i, record in ipairs(pending) do
-        if record.id == best then
-            local needed = isCrateKind(record.kind) and SEARCH_TIME_CRATE or SEARCH_TIME_ENTITY
-            if bestWork < needed - SEARCH_SLACK then
-                return
-            end
-            record.searched = true
-            unmark(record)
-            table.remove(pending, i)
-            log(record.kind .. " " .. tostring(record.id) .. " searched")
-            return
-        end
+    if best ~= nil then
+        best.searched = true
+        unmark(best)
+        table.remove(pending, bestAt)
+        log(best.kind .. " " .. tostring(best.id) .. " searched")
     end
 end
 
@@ -546,23 +562,22 @@ local function watchSearches(elapsed)
         end
         if jobId >= 0 then
             if track == nil then
-                track = { id = jobId, work = {}, obj = guard.obj }
+                track = { id = jobId, work = {}, dist = {}, obj = guard.obj }
                 guardJobs[guard.id] = track
             end
-            -- the work goes to the nearest person the guard could be searching
-            local nearest, nearestAt = nil, nil
+            -- the time counts for everyone the guard could be searching
             guard.dx, guard.dy = destination(guard)
+            local working = false
             for _, record in ipairs(pending) do
                 local d = searching(guard, record)
                 if d ~= nil then
-                    if nearestAt == nil or d < nearestAt then
-                        nearest, nearestAt = record, d
-                    end
+                    local spent = elapsed * (SEARCH_RATE[guard.kind] or 1)
+                    track.work[record.id] = (track.work[record.id] or 0) + spent
+                    track.dist[record.id] = (track.dist[record.id] or 0) + d * spent
+                    working = true
                 end
             end
-            if nearest ~= nil then
-                track.work[nearest.id] = (track.work[nearest.id] or 0)
-                    + elapsed * (SEARCH_RATE[guard.kind] or 1)
+            if working then
                 progress = true
                 if scanned and not track.crooked and Get(guard.obj, "Corrupted") == true then
                     -- the game lets a bribed crooked guard miss: for this

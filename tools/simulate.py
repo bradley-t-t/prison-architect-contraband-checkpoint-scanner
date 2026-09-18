@@ -7,7 +7,7 @@ anywhere. People walk the corridor from one end to the other, in both
 directions, and keep walking whatever happens to them. Guards take the
 search jobs the scripts ask for, walk to the person, stand against them for
 the game's ten seconds (five for a crate) and only then clear them. There
-are workmen with crates in their arms, which the game will not search until
+is a guard escorting a shackled prisoner, workmen with crates in their arms, which the game will not search until
 they are set down, a crate left on the room's floor, and a crooked guard.
 
 Every target carries contraband. Every guard starts fed up, which in the
@@ -111,6 +111,13 @@ class World:
         self.walker("Cook", up=False)
         crooked = self.walker("Guard", up=True, name="Bent")
         crooked.props["Corrupted"] = True
+        # a guard escorting a shackled prisoner through: carried, like a crate
+        escort = self.walker("Guard", up=True)
+        inmate = Thing("Prisoner", escort.x, escort.y)
+        inmate.props["Name"] = inmate.own = "Escorted"
+        inmate.props["CarrierId.i"] = escort.id
+        escort.carrying = escort.charge = inmate
+        self.movers.append(inmate)
         floor = Thing("Stack", 1.5, ROOM[0] + 2.5)
         self.crates.append(floor)
         self.guards = []
@@ -285,7 +292,7 @@ class World:
             if j.done:
                 continue
             if j.guard is None:
-                free = [g for g in self.guards if g.job is None]
+                free = [g for g in self.guards if g.job is None and g is not j.target]
                 if free:
                     j.guard = min(free, key=lambda g: math.hypot(g.x - j.target.x, g.y - j.target.y))
                     j.guard.job = j
@@ -318,8 +325,19 @@ class World:
                 continue
             held = any(j.target is m and j.guard is not None and not j.done
                        and math.hypot(j.guard.x - m.x, j.guard.y - m.y) <= REACH for j in self.jobs)
+            if getattr(m, "charge", None) is not None and m.carrying is None:
+                held = True
             if not held:
                 self.step_towards(m, m.x, m.goal)
+            charge = getattr(m, "charge", None)
+            if charge is not None and m.carrying is None:
+                # the escort waits by a prisoner it was made to let go of,
+                # and takes them on again once they have been searched
+                held = True
+                if charge.searches > 0 and self.t - charge.last_searched > 2 and not any(j.target is charge and not j.done for j in self.jobs):
+                    m.carrying = charge
+                    charge.props["CarrierId.i"] = m.id
+                    m.x, m.y = charge.x, charge.y
             if m.carrying is not None:
                 m.carrying.x, m.carrying.y = m.x, m.y
         self.check()
@@ -375,6 +393,8 @@ def run(seed):
             failures.append("%s %d never arrived (y %.1f)" % (m.kind, m.id, m.y))
         if hasattr(m, "own") and m.props.get("Name") != m.own:
             failures.append("%s %d is named %r, not %r" % (m.kind, m.id, m.props.get("Name"), m.own))
+        if m.kind == "Prisoner" and m.goal is None and abs(m.y - (LENGTH - 1.5)) > 0.1:
+            failures.append("the escorted prisoner never arrived (y %.1f)" % m.y)
         if m.kind == "Prisoner":
             hurt = m.props.get("Damage") or 0
             if abs(hurt - INJURY * m.visits) > 1e-6 or m.visits != 1:
@@ -386,8 +406,8 @@ def run(seed):
     if bent.props.get("Corrupted") is not True or bent.props.get("Exposed") is not True:
         failures.append("the crooked guard ended corrupted=%r exposed=%r" % (
             bent.props.get("Corrupted"), bent.props.get("Exposed")))
-    if world.set_down != 2:
-        failures.append("%d crates set down, not 2" % world.set_down)
+    if world.set_down != 3:
+        failures.append("%d things set down, not 3" % world.set_down)
     if world.machine.props.get("Name"):
         failures.append("the machine is still calling")
     searched = sum(1 for o in list(world.movers) + world.crates if o.searches)

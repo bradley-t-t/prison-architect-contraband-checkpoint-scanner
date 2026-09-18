@@ -29,10 +29,11 @@ every tile zoned together with the machine's.
    game's own search is the only thing that takes contraband off a person,
    and one search takes everything the guard finds, so that is what is
    used.
-3. The game will not search a crate while someone is carrying it, so
+3. The game will not search anything while someone is carrying it, so
    whoever carries an unsearched crate into the room is made to set it
-   down there. It is searched on the floor, and the game has it collected
-   again afterwards.
+   down there, and a guard escorting an unsearched prisoner is made to let
+   go of them. The search happens in the room, and the game has the crate
+   collected, or the prisoner escorted, again afterwards.
 4. Until that search is done they do not leave. There is no door to hold
    shut, so the machine holds the person: anyone unsearched who steps out
    of the room is put back where they last stood inside it.
@@ -45,7 +46,9 @@ nothing to them, so holding them would only block the corridor.
 The machine cannot see what a person carries and the game reports nothing
 when a search ends, so it watches the guards instead. A guard's job is
 readable, and a search is one job: a job that ends after a search's worth of
-standing against the person it was walking to was that person's search. The
+standing against the person it was walking to was that person's search.
+A person's search takes twice as long as a crate's, so the length of the
+job tells the two apart when a crate lies beside someone. The
 machine's light is green with nobody waiting and red while it holds anyone.
 
 ## Why the Room Scanner finds everything
