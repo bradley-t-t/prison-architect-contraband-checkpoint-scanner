@@ -6,7 +6,7 @@ Outputs, relative to the mod root (the parent of this tools/ folder):
   data/prefabs.txt                  the four quick builds, 1x1 to 4x4
   data/language/base-language.txt   names, build-menu text and tooltips
   thumbnail.png                     the mod's card image in the game's mod list
-  tools/preview.png                 every sprite at twice the size, labelled
+  tools/preview.png                 every sprite at twice the size, and a plan of each quick build
 
 Usage: python gen_assets.py
 
@@ -16,7 +16,7 @@ by hand and not touched here.
 
 import os
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
@@ -60,13 +60,72 @@ DOOR_STRIDE = 8
 DOOR_ROW = 2
 SHEET_CELLS = (16, 4)
 
-# The quick builds: a chamber of N by N tiles. Each side of the room is an
-# outer door in the outside wall, a one-tile vestibule walled off to the
-# door's column, and an inner door in a wall across the room. The scanner
-# stands in the door column in the middle of the chamber.
-PREFAB_SIZES = (1, 2, 3, 4)
-FLOOR = "ConcreteTiles"
+# The quick builds, drawn a character to a tile: "#" wall, "." a lobby's
+# floor, "," the searched room's floor, "I" and "O" the entrance and exit
+# doors, "S" the scanner. People walk straight down the map, in at the top
+# and out at the bottom: outer door, lobby, inner door, the room, inner door,
+# lobby, outer door. The ring of wall round the edge is the game's own work,
+# since a quick build walls its edge itself in whatever wall the player has
+# picked and builds every wall drawn here in the same one. No wall is more
+# than a tile thick, because the game draws a thicker one as a lattice. The
+# column the doors stand in is kept clear of furniture. What furnishes a
+# build is listed beside its map as (type, x, y, facing): "s" and "n" face
+# down and up the map, and "e" and "w" turn a long piece to run down the map
+# from x, y. Nothing here is anything a prisoner can use: a chair or a bench
+# meets the need for comfort, and one in this room would bring prisoners in
+# from all over the prison to sit on it.
+LOBBY_FLOOR = "ConcreteFloor"
+ROOM_FLOOR = "NewCargoFloor"
 WALL = "ConcreteWall"
+FACING = {"s": (0, 1), "n": (0, -1), "e": (1, 0), "w": (-1, 0)}
+LAYOUTS = {
+    1: dict(
+        rows=["#I#",
+              "#.#",
+              "#I#",
+              "#S#",
+              "#O#",
+              "#.#",
+              "#O#"],
+        things=[("Light", 1, 1, "s"), ("Light", 1, 5, "s")]),
+    2: dict(
+        rows=["##I#",
+              "#..#",
+              "##I#",
+              "#,,#",
+              "#,S#",
+              "##O#",
+              "#..#",
+              "##O#"],
+        things=[("OfficeDesk", 1, 3, "e"),
+                ("Light", 1, 1, "s"), ("Light", 2, 3, "s"), ("Light", 1, 6, "s")]),
+    3: dict(
+        rows=["##I##",
+              "#...#",
+              "##I##",
+              "#,,,#",
+              "#,S,#",
+              "#,,,#",
+              "##O##",
+              "#...#",
+              "##O##"],
+        things=[("FilingCabinet", 1, 3, "s"), ("OfficeDesk", 1, 4, "e"),
+                ("Light", 2, 1, "s"), ("Light", 2, 3, "s"), ("Light", 2, 7, "s")]),
+    4: dict(
+        rows=["##I###",
+              "#....#",
+              "##I###",
+              "#,,,,#",
+              "#,,,,#",
+              "#,S,,#",
+              "#,,,,#",
+              "##O###",
+              "#....#",
+              "##O###"],
+        things=[("FilingCabinet", 1, 3, "s"), ("OfficeDesk", 1, 4, "e"), ("Table", 4, 3, "e"),
+                ("Light", 3, 1, "s"), ("Light", 3, 4, "s"), ("Light", 3, 8, "s")]),
+}
+PREFAB_SIZES = tuple(sorted(LAYOUTS))
 
 SCANNER_PRICE = 1000
 
@@ -170,8 +229,54 @@ def build_thumbnail():
     return im
 
 
+# What each piece of furniture covers, in tiles, lying along the map.
+FOOTPRINT = {"OfficeDesk": (2, 1), "Table": (4, 1)}
+PLAN_TILE = 28
+PLAN_COLOURS = {
+    "#": (74, 78, 86), ".": (150, 146, 140), ",": (52, 74, 84),
+    "OfficeDesk": (156, 112, 66), "FilingCabinet": (104, 142, 64), "Table": (226, 226, 222),
+}
+
+
+def layout_plan(n):
+    """One quick build drawn as a plan: walls, the two floors, the mod's own
+    sprites for the doors and the scanner, a block for each piece of
+    furniture and a dot for each light."""
+    layout = LAYOUTS[n]
+    rows = layout["rows"]
+    t = PLAN_TILE
+    im = Image.new("RGBA", (len(rows[0]) * t, len(rows) * t), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            floor = "," if c == "S" else "." if c in "IO" else c
+            d.rectangle([x * t, y * t, (x + 1) * t - 1, (y + 1) * t - 1], fill=PLAN_COLOURS[floor] + (255,))
+            if floor != "#":
+                d.rectangle([x * t, y * t, (x + 1) * t - 1, (y + 1) * t - 1], outline=(0, 0, 0, 28))
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            sprite = {"I": door_leaf(DOORS[0][1]), "O": door_leaf(DOORS[1][1]),
+                      "S": scanner_sprite(FRAME_IDLE)}.get(c)
+            if sprite is not None:
+                small = sprite.resize((t, t), Image.LANCZOS)
+                im.paste(small, (x * t, y * t), small)
+    for kind, x, y, facing in layout["things"]:
+        if kind == "Light":
+            cx, cy = x * t + t // 2, y * t + t // 2
+            d.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=(255, 214, 64, 255), outline=(120, 90, 0, 255))
+            continue
+        w, h = FOOTPRINT.get(kind, (1, 1))
+        if facing in "ew":
+            w, h = h, w
+        d.rounded_rectangle([x * t + 3, y * t + 3, (x + w) * t - 4, (y + h) * t - 4], radius=4,
+                            fill=PLAN_COLOURS[kind] + (255,), outline=(0, 0, 0, 160))
+    return im
+
+
 def build_preview():
-    im = Image.new("RGBA", (6 * 140 + 20, 2 * 160), (30, 30, 50, 255))
+    plans = [layout_plan(n) for n in PREFAB_SIZES]
+    top = 2 * 160
+    im = Image.new("RGBA", (6 * 140 + 20, top + max(p.height for p in plans) + 40), (30, 30, 50, 255))
     d = ImageDraw.Draw(im)
     for f in range(SCANNER_FRAMES):
         im.paste(scanner_sprite(f).resize((128, 128), Image.NEAREST), (f * 140 + 10, 16))
@@ -182,6 +287,11 @@ def build_preview():
         d.text((i * 280 + 10, 162), name, fill=(255, 255, 0, 255))
         im.paste(flat.transpose(Image.ROTATE_90).resize((128, 128), Image.NEAREST), (i * 280 + 150, 176))
         d.text((i * 280 + 150, 162), name + " vertical", fill=(255, 255, 0, 255))
+    x = 10
+    for n, plan in zip(PREFAB_SIZES, plans):
+        d.text((x, top + 6), f"StripSearch{n}  {plan.width // PLAN_TILE}x{plan.height // PLAN_TILE}", fill=(255, 255, 0, 255))
+        im.paste(plan, (x, top + 24), plan)
+        x += plan.width + 40
     return im
 
 
@@ -245,9 +355,40 @@ END
     return text
 
 
+def rectangles(rows, wanted):
+    """The tiles of a map drawn in any of the wanted characters, as a few
+    rectangles (x, y, w, h): runs along each row, joined down the map where
+    the same run repeats."""
+    open_runs, done = {}, []
+    for y, row in enumerate(rows):
+        runs, x = [], 0
+        while x < len(row):
+            if row[x] in wanted:
+                start = x
+                while x < len(row) and row[x] in wanted:
+                    x += 1
+                runs.append((start, x - start))
+            else:
+                x += 1
+        carried = {}
+        for run in runs:
+            if run in open_runs:
+                top, height = open_runs.pop(run)
+                carried[run] = (top, height + 1)
+            else:
+                carried[run] = (y, 1)
+        done += [(rx, top, rw, height) for (rx, rw), (top, height) in open_runs.items()]
+        open_runs = carried
+    done += [(rx, top, rw, height) for (rx, rw), (top, height) in open_runs.items()]
+    return sorted(done, key=lambda r: (r[1], r[0]))
+
+
 def prefab_text(n):
-    w, h = n + 2, n + 6
-    dc = 1 + n // 2
+    layout = LAYOUTS[n]
+    rows = layout["rows"]
+    w, h = len(rows[0]), len(rows)
+    assert all(len(row) == w for row in rows), f"size {n}: ragged map"
+    inside = [row[1:-1] for row in rows[1:-1]]
     lines = [
         "BEGIN Prefab",
         f"    Name        StripSearch{n}",
@@ -256,29 +397,33 @@ def prefab_text(n):
         "    RoomType    StripSearch",
     ]
 
-    def material(kind, x, y, mw, mh):
-        lines.append(f"    BEGIN Material  Type    {kind:<20} x {x:>3}  y {y:>3}  w {mw:>3}  h {mh:>3}  END")
+    def material(kind, wanted):
+        for x, y, mw, mh in rectangles(inside, wanted):
+            lines.append(f"    BEGIN Material  Type    {kind:<20} x {x + 1:>3}  y {y + 1:>3}  w {mw:>3}  h {mh:>3}  END")
 
-    def obj(kind, x, y):
-        lines.append(f"    BEGIN Object    Type    {kind:<20} x {x:>3}  y {y:>3}  orX  0  orY  1  END")
+    def obj(kind, x, y, facing="s"):
+        ox, oy = FACING[facing]
+        lines.append(f"    BEGIN Object    Type    {kind:<20} x {x:>3}  y {y:>3}  orX {ox:>2}  orY {oy:>2}  END")
 
-    # floor under the whole way through, chamber and both vestibules
-    material(FLOOR, 1, 1, n, h - 2)
-    # the vestibule rows are walled off to the door's column
-    for y in (1, h - 2):
-        if dc > 1:
-            material(WALL, 1, y, dc - 1, 1)
-        if dc < n:
-            material(WALL, dc + 1, y, n - dc, 1)
-    # the walls across the room that carry the inner doors
-    material(WALL, 1, 2, n, 1)
-    material(WALL, 1, h - 3, n, 1)
-    lines.append(f"    BEGIN Zone      Type    StripSearch          x   1  y   3  w {n:>3}  h {n:>3}  END")
-    obj("StripSearchDoorIn", dc, 0)
-    obj("StripSearchDoorIn", dc, 2)
-    obj("StripSearchScanner", dc, 3 + n // 2)
-    obj("StripSearchDoorOut", dc, h - 3)
-    obj("StripSearchDoorOut", dc, h - 1)
+    # floor first, the doors' own tiles included; walls never under a door
+    material(LOBBY_FLOOR, ".IO")
+    material(ROOM_FLOOR, ",S")
+    material(WALL, "#")
+    room = [(x, y) for y, row in enumerate(rows) for x, c in enumerate(row) if c in ",S"]
+    x0, y0 = min(x for x, _ in room), min(y for _, y in room)
+    x1, y1 = max(x for x, _ in room), max(y for _, y in room)
+    assert len(room) == (x1 - x0 + 1) * (y1 - y0 + 1), f"size {n}: the room is not a rectangle"
+    lines.append(f"    BEGIN Zone      Type    StripSearch          x {x0:>3}  y {y0:>3}  w {x1 - x0 + 1:>3}  h {y1 - y0 + 1:>3}  END")
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c == "I":
+                obj("StripSearchDoorIn", x, y)
+            elif c == "O":
+                obj("StripSearchDoorOut", x, y)
+            elif c == "S":
+                obj("StripSearchScanner", x, y)
+    for kind, x, y, facing in layout["things"]:
+        obj(kind, x, y, facing)
     lines.append("END")
     return "\n".join(lines) + "\n"
 
@@ -299,7 +444,7 @@ def language_text():
     room = ("A search checkpoint. Everyone who goes through is shut in and searched by a guard before the far "
             "door opens, so contraband cannot be carried past it. Build with the quick builds, or by hand: "
             "a walled room with a Strip Search Scanner, a Strip Search Entrance in one wall and a Strip "
-            "Search Exit in another, each best with a one-tile vestibule behind a second door of the same kind.")
+            "Search Exit in another, each best with a lobby behind a second door of the same kind.")
     rows = [
         ("object_StripSearchScanner", "Strip Search Scanner"),
         ("buildtoolbar_popup_obj_StripSearchScanner", scanner),
@@ -321,17 +466,28 @@ def language_text():
     return "".join(f"{k:<{width}}{v}\n" for k, v in rows)
 
 
+def save_image(im, path):
+    """Writes a picture unless the file already holds the same pixels: a
+    different version of the imaging library packs the same picture into
+    different bytes, and that is not a change."""
+    if os.path.exists(path):
+        with Image.open(path) as old:
+            if old.size == im.size and ImageChops.difference(old.convert("RGBA"), im.convert("RGBA")).getbbox() is None:
+                return
+    im.save(path)
+
+
 def main():
     os.makedirs(os.path.join(DATA, "language"), exist_ok=True)
-    build_sprites().save(os.path.join(DATA, "sprites.png"))
+    save_image(build_sprites(), os.path.join(DATA, "sprites.png"))
     with open(os.path.join(DATA, "materials.txt"), "w") as f:
         f.write(materials_text())
     with open(os.path.join(DATA, "prefabs.txt"), "w") as f:
         f.write(prefabs_text())
     with open(os.path.join(DATA, "language", "base-language.txt"), "w") as f:
         f.write(language_text())
-    build_thumbnail().save(os.path.join(ROOT, "thumbnail.png"))
-    build_preview().save(os.path.join(TOOLS, "preview.png"))
+    save_image(build_thumbnail(), os.path.join(ROOT, "thumbnail.png"))
+    save_image(build_preview(), os.path.join(TOOLS, "preview.png"))
     print("wrote sprites.png, materials.txt, prefabs.txt, base-language.txt, thumbnail.png, preview.png")
 
 

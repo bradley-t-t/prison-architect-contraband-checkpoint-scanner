@@ -1,12 +1,18 @@
 """Runs the Strip Search Scanner script against a mock of the game.
 
-The mock stands in for the engine: four doors, an outer and an inner one on
-each side of the room with a one-tile vestibule between them, that swing on
-their own when someone asks and obey the scanner's writes, people walking a
-corridor that passes through the room, guards who take the search jobs the scanner asks
-for, walk to the person, stand against them for the game's ten seconds
-(five for a crate) and only then clear them, escorts, crates in a workman's
-arms, and traffic in both directions.
+The mock stands in for the engine. Its map is the quick build the mod ships,
+read from data/prefabs.txt: four doors, an outer and an inner one on each
+side of the room with a lobby between them, that swing on their own when
+someone asks and obey the scanner's writes. People walk a corridor that
+passes through the room, and spread out sideways wherever a shut door holds
+them up. Guards take the search jobs the scanner asks for, walk to the
+person, stand against them for the game's ten seconds (five for a crate)
+and only then clear them. There are escorts, crates in a workman's arms, and
+traffic in both directions.
+
+Every scenario runs twice over: once with walls the scanner can tell are
+walls, and once with walls it cannot, which leaves it to keep track of
+people in a lobby it could not map.
 
 It checks, over every seed and room size, that nothing crosses the room
 without a finished search, that both doors are never open together, and
@@ -19,12 +25,18 @@ Usage: python simulate.py [seeds]   (needs the lupa package)
 import math
 import os
 import random
+import re
 import sys
 
 from lupa import LuaRuntime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "data", "scripts", "StripSearchScanner.lua")
+WORLD_SCRIPT = os.path.join(ROOT, "data", "world.lua")
+PREFABS = os.path.join(ROOT, "data", "prefabs.txt")
+# What the map's walls are made of: the wall a quick build gets by default,
+# and one whose name tells the scanner nothing.
+WALLS = ("ConcreteWall", "Plasteel")
 SEEDS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
 DT = 1.0 / 30
 HORIZON = 60 * 30            # simulated seconds per run
@@ -36,6 +48,40 @@ SEARCH_COOLDOWN = 30.0
 LOCK_GIVE_UP = 6.0           # seconds at a door locked shut before a route fails
 RETREAT = 30.0               # seconds a prisoner whose route failed stays away
 FAR = 8                      # tiles beyond a door where the corridor ends
+REACH = 0.9                  # how close a guard stands to the person searched
+# The mock counts tiles from the chamber's corner, so the entrance side is
+# below zero. No map in the game has a tile below zero, and the scanner reads
+# a destination of less than zero as none set, so everything the scripts see
+# is moved this far along both ways.
+SHIFT = 40
+
+
+def read_prefab(n):
+    """The quick build of that size as the mock's map: a grid of "wall",
+    "lobby", "room" and "door", the chamber's corner, and the door column.
+    The edge of a quick build is wall wherever no door stands."""
+    text = open(PREFABS).read()
+    block = next(b for b in re.split(r"\nBEGIN Prefab", "\n" + text)[1:]
+                 if re.search(r"Name\s+StripSearch%d\b" % n, b))
+    w, h = (int(re.search(r"^\s*%s\s+(\d+)" % k, block, re.M).group(1)) for k in ("w", "h"))
+    grid = [["wall" if x in (0, w - 1) or y in (0, h - 1) else "lobby" for x in range(w)] for y in range(h)]
+    for kind, x, y, mw, mh in re.findall(r"BEGIN Material\s+Type\s+(\S+)\s+x\s+(\d+)\s+y\s+(\d+)\s+w\s+(\d+)\s+h\s+(\d+)", block):
+        for yy in range(int(y), int(y) + int(mh)):
+            for xx in range(int(x), int(x) + int(mw)):
+                if "Wall" in kind:
+                    grid[yy][xx] = "wall"
+    zx, zy, zw, zh = (int(v) for v in re.search(
+        r"BEGIN Zone\s+Type\s+StripSearch\s+x\s+(\d+)\s+y\s+(\d+)\s+w\s+(\d+)\s+h\s+(\d+)", block).groups())
+    for yy in range(zy, zy + zh):
+        for xx in range(zx, zx + zw):
+            grid[yy][xx] = "room"
+    things = [(kind, int(x), int(y)) for kind, x, y in re.findall(
+        r"BEGIN Object\s+Type\s+(\S+)\s+x\s+(\d+)\s+y\s+(\d+)", block)]
+    for kind, x, y in things:
+        if kind.startswith("StripSearchDoor"):
+            grid[y][x] = "door"
+    assert (zw, zh) == (n, n), "the %dx%d quick build's room is %dx%d" % (n, n, zw, zh)
+    return grid, (zx, zy), things
 
 
 def luafn(L, f):
@@ -60,7 +106,7 @@ class Mover(Thing):
     def __init__(self, kind, world, direction, delay, carrying=False):
         cx = world.cx
         start = -3 - FAR if direction > 0 else world.n + 2 + FAR
-        super().__init__(kind, cx, start)
+        super().__init__(kind, cx + 0.5, start)
         self.direction = direction        # +1 walks entry to exit, -1 the reverse
         self.delay = delay
         self.carrying = carrying          # contraband, cleared only by a finished search
@@ -79,21 +125,31 @@ class Mover(Thing):
         self.escort = False
         self.blocked = 0.0                # seconds spent at a door locked shut
         self.retreat_until = 0.0          # a prisoner who gave up waits this long
+        self.spot = None                  # where they drift to while held up
 
 
 class World:
-    def __init__(self, seed, n, scenario):
+    def __init__(self, seed, n, scenario, wall=WALLS[0]):
         self.rng = random.Random(seed)
         self.n = n
-        self.cx = n // 2
+        self.wall = wall
+        # the mock's tiles count from the chamber's corner; the quick build's
+        # count from its own
+        self.grid, self.corner, things = read_prefab(n)
+        door_x = {x - self.corner[0] for kind, x, y in things if kind.startswith("StripSearchDoor")}
+        door_y = sorted(y - self.corner[1] for kind, x, y in things if kind.startswith("StripSearchDoor"))
+        assert len(door_x) == 1 and door_y == [-3, -1, n, n + 2], "doors at %s, %s" % (door_x, door_y)
+        self.cx = door_x.pop()
         self.t = 0.0
         self.tick = 0
         self.reads = 0
         self.writes = 0
         self.requests = 0
+        self.lookups = 0
         self.log = []
         self.violations = []
-        self.scanner = Thing("StripSearchScanner", self.cx + 0.5, n // 2 + 0.5)
+        sx, sy = next((x, y) for kind, x, y in things if kind == "StripSearchScanner")
+        self.scanner = Thing("StripSearchScanner", sx - self.corner[0] + 0.5, sy - self.corner[1] + 0.5)
         self.scanner.props.update({"SubType": 0, "Tooltip": ""})
         # rows: -3 outer In door, -2 In vestibule, -1 inner In door, 0..n-1 the
         # chamber, n inner Out door, n+1 Out vestibule, n+2 outer Out door
@@ -115,8 +171,26 @@ class World:
         scenario(self)
 
     # ---------------------------------------------------------------- geometry
+    def tile(self, x, y):
+        """What the quick build has at a tile, or None outside it."""
+        gx, gy = math.floor(x) + self.corner[0], math.floor(y) + self.corner[1]
+        if 0 <= gy < len(self.grid) and 0 <= gx < len(self.grid[0]):
+            return self.grid[gy][gx]
+        return None
+
     def inside(self, x, y):
-        return 0 <= math.floor(x) < self.n and 0 <= math.floor(y) < self.n
+        return self.tile(x, y) == "room"
+
+    def span(self, y):
+        """The open tiles of a row either side of the door column."""
+        if self.tile(self.cx, y) not in ("lobby", "room"):
+            return self.cx, self.cx
+        lo = hi = self.cx
+        while self.tile(lo - 1, y) in ("lobby", "room"):
+            lo -= 1
+        while self.tile(hi + 1, y) in ("lobby", "room"):
+            hi += 1
+        return lo, hi
 
     def door_at(self, y):
         ty = math.floor(y)
@@ -147,8 +221,12 @@ class World:
             yield c
 
     # ---------------------------------------------------------------- lua side
-    def bind(self, L):
-        self.L = L
+    def bind(self, L, script):
+        """Gives a Lua state what the game gives that kind of script. An
+        object's own script ("object") gets Object, World, Interface and a
+        Game holding only Time and DebugOut, with "this" as the object. A
+        mod's world script ("world") gets Object, World, the whole Game
+        library and the work queue, and has no object of its own."""
         world = self
 
         def proxy(obj):
@@ -157,7 +235,9 @@ class World:
                 if k == "Id":
                     return L.table(i=obj.id, u=1)
                 if k == "Pos":
-                    return L.table(x=obj.x, y=obj.y)
+                    return L.table(x=obj.x + SHIFT, y=obj.y + SHIFT)
+                if k == "Or" and obj.kind.startswith("StripSearchDoor"):
+                    return L.table(x=0, y=1)
                 return obj.props.get(k)
 
             def newindex(t, k, v):
@@ -176,36 +256,66 @@ class World:
                     return o
             return None
 
-        def get_nearby(kind, rng):
+        def get_nearby(*args):
             world.reads += 1
             out = L.table()
-            sx, sy = world.scanner.x, world.scanner.y
+            if len(args) == 3:
+                centre, kind, rng = resolve(args[0]), args[1], args[2]
+            elif script == "object":
+                centre, kind, rng = world.scanner, args[0], args[1]
+            else:
+                centre = None      # a world script has no object to measure from
+            if centre is None:
+                return out
+            # the game files each object's table under the object's Name when
+            # it has one, so two objects sharing a Name come back as one
+            named = {}
             for o in world.objects():
-                if o.kind == kind and o is not world.scanner:
-                    d = math.hypot(o.x - sx, o.y - sy)
+                if o.kind == kind and o is not centre:
+                    d = math.hypot(o.x - centre.x, o.y - centre.y)
                     if d <= rng:
-                        out[proxy(o)] = d
+                        name = o.props.get("Name") or ""
+                        if name:
+                            named[name] = (o, d)
+                        else:
+                            out[proxy(o)] = d
+            for o, d in named.values():
+                out[proxy(o)] = d
             return out
 
-        def get_property(tbl, key):
+        def get_property(*args):
             world.reads += 1
-            o = resolve(tbl)
+            if len(args) == 1:
+                o, key = (world.scanner if script == "object" else None), args[0]
+            else:
+                o, key = resolve(args[0]), args[1]
             if o is None:
                 return None
             if key == "JobId":
                 return o.job.id if getattr(o, "job", None) else -1
             if key == "Dest":
                 d = getattr(o, "dest", None)
-                return L.table(x=d[0], y=d[1]) if d else None
+                return L.table(x=d[0] + SHIFT, y=d[1] + SHIFT) if d else None
             if key == "CarrierId.i":
                 return o.props.get("CarrierId.i", -1)
             return o.props.get(key)
 
-        def set_property(tbl, key, value):
+        def set_property(*args):
             world.writes += 1
-            o = resolve(tbl)
+            if len(args) == 2:
+                o, key, value = (world.scanner if script == "object" else None), args[0], args[1]
+            else:
+                o, key, value = resolve(args[0]), args[1], args[2]
             if o is not None:
                 o.props[key] = float(value) if key == "Open" else value
+
+        def get_object(name):
+            # the first object in the world carrying that Name
+            world.lookups += 1
+            for o in world.objects():
+                if o.props.get("Name") == name:
+                    return proxy(o)
+            return None
 
         def request(kind, tbl):
             assert kind == "SearchObject"
@@ -222,16 +332,23 @@ class World:
 
         def get_cell(x, y):
             world.reads += 1
-            room = 7 if world.inside(x, y) else -1
-            return L.table(Room=L.table(i=room, u=1))
+            what = world.tile(x - SHIFT, y - SHIFT)
+            room = 7 if what == "room" else -1
+            mat = {None: "Grass", "wall": world.wall, "room": "WhiteTiles"}.get(what, "ConcreteFloor")
+            return L.table(Room=L.table(i=room, u=1), Mat=mat)
 
+        debug_out = luafn(L, lambda s: world.log.append("%7.2f %s" % (world.t, s)))
+        game_time = luafn(L, lambda: world.t)
         g = L.globals()
-        g["this"] = proxy(self.scanner)
         g["Object"] = L.table(GetNearbyObjects=luafn(L, get_nearby), GetProperty=luafn(L, get_property),
                               SetProperty=luafn(L, set_property))
-        g["WorkQueue"] = L.table(Request=luafn(L, request))
         g["World"] = L.table(GetCell=luafn(L, get_cell))
-        g["Game"] = L.table(DebugOut=luafn(L, lambda s: world.log.append("%7.2f %s" % (world.t, s))))
+        if script == "object":
+            g["this"] = proxy(self.scanner)
+            g["Game"] = L.table(DebugOut=debug_out, Time=game_time)
+        else:
+            g["Game"] = L.table(DebugOut=debug_out, Time=game_time, GetObject=luafn(L, get_object))
+            g["WorkQueue"] = L.table(Request=luafn(L, request))
 
     # ---------------------------------------------------------------- the engine's tick
     def step(self):
@@ -283,14 +400,41 @@ class World:
             return
         self.walk(m, m.direction)
 
+    def sidestep(self, m, x):
+        """Moves someone along their row towards x; true once there."""
+        gap = x - m.x
+        step = WALK * DT
+        if abs(gap) <= step:
+            m.x = x
+            return True
+        m.x += step if gap > 0 else -step
+        return False
+
+    def mill(self, m):
+        """Someone held up inside drifts off to a spot somewhere in their row."""
+        if not self.in_airlock(m.y) or self.door_at(m.y) is not None:
+            return
+        if m.spot is None:
+            lo, hi = self.span(m.y)
+            m.spot = self.rng.uniform(lo + 0.1, hi + 0.9)
+        self.sidestep(m, m.spot)
+
     def walk(self, m, direction, target_y=None):
         ny = m.y + direction * WALK * DT
+        lane = self.cx + 0.5
         # stepping onto a door tile needs the door open
         cur_door = self.door_at(m.y)
         next_door = self.door_at(ny)
         if next_door is not None and next_door is not cur_door:
+            if self.door_open(next_door) and m.x != lane:
+                # a door is only as wide as its column
+                m.spot = None
+                self.sidestep(m, lane)
+                return True
             if not self.door_open(next_door):
                 next_door.requested = True
+                if next_door.props.get("Mode") != 1:
+                    self.mill(m)
                 if next_door.props.get("Mode") == 1:
                     # the game routes nobody through a door locked shut: a
                     # guard's job fails within seconds and goes back on the
@@ -309,6 +453,7 @@ class World:
                 else:
                     m.blocked = 0.0
                 return False
+        m.spot = None
         was_in = self.in_airlock(m.y)
         m.y = ny
         now_in = self.in_airlock(m.y)
@@ -352,7 +497,13 @@ class World:
         if g.job is not None:
             tx, ty = g.job.target.x, g.job.target.y
             g.dest = (tx, ty)
-            if abs(g.y - ty) <= 0.9:
+            if abs(g.y - ty) <= REACH:
+                # level with them: across the row to their side
+                if abs(g.x - tx) > REACH and not g.job.done:
+                    if self.door_at(g.y) is None:
+                        self.sidestep(g, tx)
+                    else:
+                        self.walk(g, 1 if ty > g.y else -1)   # out of the doorway first
                 return  # adjacent: work happens in work()
             if g.job.done and self.door_at(g.y) is None and not self.in_airlock(g.y):
                 return  # an errand elsewhere: out of the corridor, it just waits
@@ -360,7 +511,7 @@ class World:
             self.walk(g, direction)
         else:
             # done: head home along the corridor, out of whichever door opens
-            g.dest = (self.cx, g.home_y)
+            g.dest = (self.cx + 0.5, g.home_y)
             direction = 1 if g.home_y > g.y else -1
             self.walk(g, direction)
             if abs(g.y - g.home_y) < 0.5:
@@ -369,7 +520,7 @@ class World:
 
     def work(self, g):
         j = g.job
-        if abs(g.y - j.target.y) > 0.9:
+        if abs(g.y - j.target.y) > REACH or abs(g.x - j.target.x) > REACH:
             return
         j.work += DT
         interrupt_at = getattr(self, "interrupt_at", None)
@@ -380,7 +531,7 @@ class World:
             j.interrupted = True
             j.work = 0.0
             j.guard = None
-            errand = Job(Thing("Errand", self.cx, g.home_y), self.t)
+            errand = Job(Thing("Errand", self.cx + 0.5, g.home_y), self.t)
             errand.done = True
             errand.until = self.t + 20
             g.job = errand
@@ -531,17 +682,24 @@ SCENARIOS = [mealtime, both_ways, escort, deliveries, staff_only, crooked, far_g
 
 # -------------------------------------------------------------------- the run
 
-def run(seed, n, scenario):
-    src = open(SCRIPT).read()
+def run(seed, n, scenario, wall=WALLS[0]):
+    world = World(seed, n, scenario, wall)
+    # two Lua states, as in the game: the scanner's own script, and the mod's
+    # world script, which alone is given the work queue
     L = LuaRuntime(unpack_returned_tuples=True)
-    world = World(seed, n, scenario)
-    world.bind(L)
-    L.execute(src)
+    world.bind(L, "object")
+    L.execute(open(SCRIPT).read())
     g = L.globals()
+    W = LuaRuntime(unpack_returned_tuples=True)
+    world.bind(W, "world")
+    W.execute(open(WORLD_SCRIPT).read())
+    wg = W.globals()
+    wg.Init()
     g.Create()
     steps = int(HORIZON / DT)
     for _ in range(steps):
         world.step()
+        wg.Update("%f" % DT)       # the game hands a world script its time as text
         g.Update(DT)
         if all(m.done for m in world.movers if not m.searcher):
             break
@@ -561,21 +719,23 @@ def main():
     for scenario in SCENARIOS:
         for n in (1, 2, 3, 4):
             worst = 0.0
-            reads = writes = requests = ticks = 0
-            for seed in range(SEEDS):
-                world, crossings = run(seed, n, scenario)
-                if world.violations:
-                    failures += 1
-                    print("FAIL %s %dx%d seed %d:" % (scenario.__name__, n, n, seed))
-                    for v in world.violations[:6]:
-                        print("   ", v)
-                worst = max(worst, max(crossings) if crossings else 0)
-                reads += world.reads
-                writes += world.writes
-                requests += world.requests
-                ticks += world.tick
-            print("%-10s %dx%d  last crossing %5.0fs  reads/tick %5.1f  writes/tick %4.2f  search requests/run %.1f" % (
-                scenario.__name__, n, n, worst, reads / ticks, writes / ticks, requests / SEEDS))
+            reads = writes = requests = ticks = runs = 0
+            for wall in WALLS:
+                for seed in range(SEEDS):
+                    world, crossings = run(seed, n, scenario, wall)
+                    if world.violations:
+                        failures += 1
+                        print("FAIL %s %dx%d seed %d, walls of %s:" % (scenario.__name__, n, n, seed, wall))
+                        for v in world.violations[:6]:
+                            print("   ", v)
+                    worst = max(worst, max(crossings) if crossings else 0)
+                    reads += world.reads
+                    writes += world.writes
+                    requests += world.requests
+                    ticks += world.tick
+                    runs += 1
+            print("%-11s %dx%d  last crossing %5.0fs  reads/tick %5.1f  writes/tick %4.2f  search requests/run %.1f" % (
+                scenario.__name__, n, n, worst, reads / ticks, writes / ticks, requests / runs))
     print("failures:", failures)
     sys.exit(1 if failures else 0)
 

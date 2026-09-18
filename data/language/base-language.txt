@@ -5,7 +5,7 @@ buildtoolbar_popup_obj_StripSearchDoorIn     The way into a Strip Search room. T
 object_StripSearchDoorOut                    Strip Search Exit
 buildtoolbar_popup_obj_StripSearchDoorOut    The way out of a Strip Search room. The room's scanner holds it shut until everyone inside has been searched, so nothing gets past the room unsearched.
 room_stripsearch                             Strip Search
-buildtoolbar_popup_room_stripsearch          A search checkpoint. Everyone who goes through is shut in and searched by a guard before the far door opens, so contraband cannot be carried past it. Build with the quick builds, or by hand: a walled room with a Strip Search Scanner, a Strip Search Entrance in one wall and a Strip Search Exit in another, each best with a one-tile vestibule behind a second door of the same kind.
+buildtoolbar_popup_room_stripsearch          A search checkpoint. Everyone who goes through is shut in and searched by a guard before the far door opens, so contraband cannot be carried past it. Build with the quick builds, or by hand: a walled room with a Strip Search Scanner, a Strip Search Entrance in one wall and a Strip Search Exit in another, each best with a lobby behind a second door of the same kind.
 tooltip_StripSearchScanner_Intake            Letting people in.
 tooltip_StripSearchScanner_Sealed            Shut. Everyone inside is being searched.
 tooltip_StripSearchScanner_Release           All clear. Letting people out.

@@ -1,8 +1,8 @@
 -- Strip Search Scanner. It runs the room it stands in as a search airlock.
 --
 -- Each side of the room has a Strip Search Entrance or Exit on the outer
--- wall, a one-tile vestibule, and a second door of the same kind between the
--- vestibule and the room. Every door is a plain door that the scanner holds
+-- wall, a lobby, and a second door of the same kind between the lobby and
+-- the room. Every door is a plain door that the scanner holds
 -- open or shut itself, every tick, so the engine never gets to open one on
 -- its own. People come in through one side's pair of doors; once nobody new
 -- has stepped in for a moment the scanner shuts them, and with everything
@@ -11,7 +11,7 @@
 -- and any crate on the floor or in someone's arms. The game's own search is
 -- the one thing that takes contraband off a person, so that is what is used.
 -- A guard comes. One arriving on the side people came in by is let straight
--- in. One arriving on the far side is let into that side's vestibule first,
+-- in. One arriving on the far side is let into that side's lobby first,
 -- the outer door shut behind them, and the inner door opened, so nobody
 -- inside can slip out past them. When every search is done the far side's
 -- doors open and the room empties. Anyone who walks in while a door is open
@@ -32,6 +32,10 @@
 -- destination is somewhere else, such as one escorting a prisoner on
 -- through the room, is not counted. Nobody leaves by the far side until
 -- everyone who came in has a search to their name.
+--
+-- The game gives its work queue to a mod's world script only, so the search
+-- itself is asked for by data/world.lua: this script marks who is to be
+-- searched and the world script does the asking. See CALL_NAME below.
 --
 -- Two of the game's own rules are used against the doors. Someone whose
 -- route runs through a door that is merely held shut waits at it for ever,
@@ -81,6 +85,15 @@ local ADMIT_COOLDOWN = 15
 local LOCK_AFTER = 6
 local MODE_NORMAL = 0
 local MODE_LOCKED_SHUT = 1
+-- The game gives its work queue to a mod's world script and to no object's
+-- own script, so this script cannot ask for a search itself. It names the
+-- person instead: every object has a Name a script can look it up by. The
+-- person is named MARK_PREFIX and their id, this scanner is named CALL_NAME,
+-- and the mod's data/world.lua finds the scanner by that name, asks the game
+-- to search everyone near it carrying the mark, and clears both names. A
+-- cleared mark is the word that the search has been asked for.
+local CALL_NAME = "StripSearchCall"
+local MARK_PREFIX = "StripSearchTarget"
 -- Someone waiting at the far side of an empty room this long is let in there.
 local WAIT_SWITCH = 2
 -- A search the game has not started in this long is asked for again. The
@@ -104,6 +117,15 @@ local FRAME_SCAN_B = 2
 local FRAME_CLEAR = 3
 local PULSE_INTERVAL = 0.4
 local MAX_ROOM_TILES = 256
+-- A lobby can be wider than its doors. It is mapped from the tiles between
+-- its two doors out sideways as far as the walls, and a lobby with no wall
+-- within this many tiles of its doors is left at the tiles between them.
+local LOBBY_SPREAD = 8
+-- Every wall, fence and stretch of water in the game and its expansions has
+-- one of these words in its material's name, and what is left of a wall that
+-- has fallen down is the only thing so named that can be walked through.
+local WALL_WORDS = { "Wall", "Fence", "Building", "Water", "Cliff" }
+local FALLEN = "Collapsed"
 local DEBUG = false
 
 local DOOR_TYPES = { In = "StripSearchDoorIn", Out = "StripSearchDoorOut" }
@@ -137,15 +159,16 @@ local pulseTimer = 0
 local frame = -1
 local clock = 0
 
--- The room: its tiles keyed "x,y" to "chamber" or the side whose vestibule
--- they are, and how far it reaches from the scanner.
+-- The room: its tiles keyed "x,y" to "chamber" or the side whose lobby they
+-- are, and how far it reaches from the scanner.
 local roomTiles = {}
 local roomReach = 3
 -- The doors by side: outer is the door to the outside, inner the door
--- between the vestibule and the room, nil when the side has one door.
--- Each door is { obj = table, tx = tile x, ty = tile y, open = the
--- engine's last reported openness, want = what it is held at, lock =
--- whether it is to be locked shut, locked = the mode last written }.
+-- between the lobby and the room, nil when the side has one door. Each door
+-- is { obj = table, tx = tile x, ty = tile y, ax and ay = the way out of the
+-- room through it, open = the engine's last reported openness, want = what
+-- it is held at, lock = whether it is to be locked shut, locked = the mode
+-- last written }.
 local doors = { In = {}, Out = {} }
 -- How long a guard has waited at each side's outer door without being let in.
 local stuck = { In = 0, Out = 0 }
@@ -155,7 +178,7 @@ local stuck = { In = 0, Out = 0 }
 --   sealed   everything shut, searches under way
 --   admit    a side opened for a guard while sealed (side = that side);
 --            stage "full" opens both doors, "outer" then "inner" one at a
---            time through the vestibule
+--            time through the lobby
 --   release  one side open for cleared people to leave (side = that side)
 local mode = "intake"
 local side = "In"
@@ -169,8 +192,8 @@ local admitted = {}
 local closing = nil
 
 -- Everyone inside or in a doorway, keyed by object id:
---   { id, obj, kind, x, y, where ("chamber", "vestibule" or "doorway"),
---     zone (side of a vestibule or doorway), cameIn (a side, or UNKNOWN),
+--   { id, obj, kind, x, y, where ("chamber", "lobby" or "doorway"),
+--     zone (side of a lobby or doorway), cameIn (a side, or UNKNOWN),
 --     target, searched, requested (clock), seen (clock) }
 local occupants = {}
 -- Crates inside, keyed by object id, with the same fields.
@@ -252,6 +275,44 @@ local function cellRoom(cell)
     return number(cell["Room.i"], -1)
 end
 
+local function isWall(cell)
+    local mat = cell ~= nil and cell.Mat or nil
+    if type(mat) ~= "string" or string.find(mat, FALLEN, 1, true) then
+        return false
+    end
+    for _, word in ipairs(WALL_WORDS) do
+        if string.find(mat, word, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+-- The way out of the room through a door, as a step of one tile. A door
+-- faces along the way through it; which of the two ways is out is the one
+-- that leads away from the scanner. A door that does not say how it faces
+-- is taken to lead straight away from the scanner.
+local function wayOut(door, sx, sy)
+    local dx, dy = door.tx + 0.5 - sx, door.ty + 0.5 - sy
+    local alongX = math.abs(dx) > math.abs(dy)
+    local facing = door.obj.Or
+    if type(facing) == "table" then
+        local fx, fy = math.abs(number(facing.x, 0)), math.abs(number(facing.y, 0))
+        if fx ~= fy then
+            local facesX = fx > fy
+            -- a door level with the scanner on its own line leads nowhere
+            -- along it, so the line from the scanner decides instead
+            if (facesX and math.abs(dx) >= 0.5) or (not facesX and math.abs(dy) >= 0.5) then
+                alongX = facesX
+            end
+        end
+    end
+    if alongX then
+        return dx < 0 and -1 or 1, 0
+    end
+    return 0, dy < 0 and -1 or 1
+end
+
 -- The two nearest doors of a side's kind: the nearer is the inner door and
 -- the further the outer, unless there is only one, which is then the outer.
 local function findDoors()
@@ -275,6 +336,9 @@ local function findDoors()
             new.outer = found[1]
         end
         for _, which in ipairs(WHICH) do
+            if new[which] ~= nil then
+                new[which].ax, new[which].ay = wayOut(new[which], sx, sy)
+            end
             if new[which] ~= nil and was[which] ~= nil and objectId(was[which].obj) == objectId(new[which].obj) then
                 local old = was[which]
                 new[which].open, new[which].want = old.open, old.want
@@ -312,8 +376,10 @@ end
 
 -- The chamber is every tile zoned like the scanner's own, reached without
 -- crossing a door; an unzoned scanner falls back to the block of tiles
--- between its inner doors. A side's vestibule is the tiles between its two
--- doors.
+-- between its inner doors. A side's lobby is the tiles between its two
+-- doors, and from those sideways to its walls: every tile that lies between
+-- the two doors' own rows, is zoned like the tiles between the doors, and
+-- is reached from them without crossing a wall.
 local function mapRoom()
     local sx, sy = position(this)
     local ox, oy = math.floor(sx), math.floor(sy)
@@ -362,9 +428,52 @@ local function mapRoom()
     if count == 0 then
         add(ox, oy, "chamber")
     end
+    local function widen(s)
+        local inner, outer = doors[s].inner, doors[s].outer
+        local ax, ay = outer.ax, outer.ay
+        local depth = (outer.tx - inner.tx) * ax + (outer.ty - inner.ty) * ay
+        if depth < 2 then
+            return
+        end
+        local home = cellRoom(World.GetCell(inner.tx + ax, inner.ty + ay))
+        local queue, found = {}, {}
+        for key, what in pairs(tiles) do
+            if what == s then
+                local x, y = string.match(key, "^(-?%d+),(-?%d+)$")
+                queue[#queue + 1] = { tonumber(x), tonumber(y) }
+            end
+        end
+        local head = 1
+        while head <= #queue do
+            local x, y = queue[head][1], queue[head][2]
+            head = head + 1
+            for _, step in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+                local nx, ny = x + step[1], y + step[2]
+                local key = tileKey(nx, ny)
+                local along = (nx - inner.tx) * ax + (ny - inner.ty) * ay
+                if tiles[key] == nil and found[key] == nil and along >= 1 and along <= depth - 1
+                    and doorwayAt(nx, ny) == nil then
+                    local cell = World.GetCell(nx, ny)
+                    if not isWall(cell) and cellRoom(cell) == home then
+                        local across = math.abs((nx - inner.tx) * ay - (ny - inner.ty) * ax)
+                        if across > LOBBY_SPREAD then
+                            -- no wall this side: not a lobby to be mapped
+                            return
+                        end
+                        found[key] = true
+                        queue[#queue + 1] = { nx, ny }
+                    end
+                end
+            end
+        end
+        for _, tile in ipairs(queue) do
+            add(tile[1], tile[2], s)
+        end
+    end
     for _, s in ipairs(SIDES) do
         if doors[s].inner ~= nil then
             block(doors[s].inner, doors[s].outer, s)
+            widen(s)
         end
     end
     roomTiles, roomReach = tiles, reach
@@ -389,9 +498,48 @@ local function relayout()
     end
 end
 
--- "chamber", a vestibule's side, or nil for a tile outside the room.
+-- "chamber", a lobby's side, or nil for a tile outside the room.
 local function insideAt(x, y)
     return roomTiles[tileKey(x, y)]
+end
+
+-- How far a spot lies out past a door, along the way out through it.
+local function past(door, x, y)
+    return (x - door.tx - 0.5) * door.ax + (y - door.ty - 0.5) * door.ay
+end
+
+-- Whether a spot lies out past the wall a side's outer door stands in. The
+-- only way there from inside is through that door.
+local function pastOuterDoor(x, y)
+    for _, s in ipairs(SIDES) do
+        local door = doors[s].outer
+        if door ~= nil and past(door, x, y) > 0.5 then
+            return true
+        end
+    end
+    return false
+end
+
+-- Where someone already on the books is when the map does not know the
+-- tile they stand on: still inside, unless they are out past an outer door.
+-- The map can fall short of the room, with a lobby whose walls it could not
+-- make out or a room zoned only in part, and nobody is to drop off the books
+-- by stepping onto a tile it missed. They are in the lobby of the side whose
+-- inner door they are out past, and otherwise in the chamber.
+local function stillInsideAt(x, y)
+    if doors.In.outer == nil and doors.Out.outer == nil then
+        return nil
+    end
+    if pastOuterDoor(x, y) then
+        return nil
+    end
+    for _, s in ipairs(SIDES) do
+        local door = doors[s].inner
+        if door ~= nil and past(door, x, y) > 0.5 then
+            return s
+        end
+    end
+    return "chamber"
 end
 
 local function nearOuterDoor(s, x, y)
@@ -488,7 +636,7 @@ local function holdSideOpen(s)
 end
 
 -- Holds both inner doors open with both outer doors shut, so a guard inside
--- can reach anyone in a vestibule while nobody can leave.
+-- can reach anyone in a lobby while nobody can leave.
 local function holdInnersOpen()
     for _, s in ipairs(SIDES) do
         local door = doors[s].outer
@@ -528,10 +676,54 @@ local function isDead(obj)
     return number(Get(obj, "Damage"), 0) >= 1
 end
 
+local function nameOf(obj)
+    local name = Get(obj, "Name")
+    if type(name) ~= "string" then
+        return ""
+    end
+    return name
+end
+
+local function isMark(name)
+    return string.sub(name, 1, #MARK_PREFIX) == MARK_PREFIX
+end
+
+-- Marks someone for the world script to have searched. Whatever name they
+-- had is kept to give back.
 local function requestSearch(record)
-    WorkQueue.Request("SearchObject", record.obj)
+    local name = nameOf(record.obj)
+    if not isMark(name) then
+        record.ownName = name
+        Set(record.obj, "Name", MARK_PREFIX .. tostring(record.id))
+    end
+    record.marked = clock
+    record.requested = nil
+    log("search wanted for " .. record.kind .. " " .. tostring(record.id))
+end
+
+-- Takes the mark off again and gives back the name it replaced.
+local function unmark(record)
+    if record.marked == nil then
+        return
+    end
+    record.marked = nil
+    local name = nameOf(record.obj)
+    local own = record.ownName or ""
+    if isMark(name) or (own ~= "" and name == "") then
+        Set(record.obj, "Name", own)
+    end
+end
+
+-- True once the world script has taken the mark off, which it does only
+-- after asking the game for the search.
+local function acknowledged(record)
+    if isMark(nameOf(record.obj)) then
+        return false
+    end
     record.requested = clock
+    unmark(record)
     log("search requested for " .. record.kind .. " " .. tostring(record.id))
+    return true
 end
 
 -- The side someone came in by is the one open at the time. Someone who
@@ -557,6 +749,11 @@ local function noteOccupant(list, id, obj, kind, x, y, where, zone, origin)
         }
         list[id] = record
         lastEntrant = clock
+        if isMark(nameOf(obj)) then
+            -- marked before a save: carry on from there
+            record.marked = clock
+            record.ownName = ""
+        end
         log(kind .. " " .. id .. " came in by the " .. record.cameIn
             .. (record.target and ", to be searched" or ""))
     end
@@ -572,6 +769,7 @@ end
 local function forget(list, outside)
     for id, record in pairs(list) do
         if outside[id] or clock - record.seen > SEEN_GRACE then
+            unmark(record)
             list[id] = nil
             lastLeft = clock
             log(record.kind .. " " .. id .. " gone")
@@ -583,7 +781,7 @@ local function notePlace(list, id, obj, kind, x, y, place, origin)
     if place == "chamber" then
         noteOccupant(list, id, obj, kind, x, y, "chamber", nil, origin)
     else
-        noteOccupant(list, id, obj, kind, x, y, "vestibule", place, origin)
+        noteOccupant(list, id, obj, kind, x, y, "lobby", place, origin)
     end
 end
 
@@ -602,23 +800,25 @@ local function scanPeople()
             local x, y = position(obj)
             local id = objectId(obj)
             if x ~= nil and id ~= nil and not isDead(obj) then
-                if SEARCHERS[kind] then
-                    scan.guards[#scan.guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
-                end
                 local place = insideAt(x, y)
+                local doorway = place == nil and doorwayAt(x, y) or nil
+                if place == nil and doorway == nil and occupants[id] ~= nil then
+                    place = stillInsideAt(x, y)
+                end
+                if SEARCHERS[kind] then
+                    scan.guards[#scan.guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y,
+                                                      place = place or (doorway and "doorway") }
+                end
                 if place ~= nil then
                     notePlace(occupants, id, obj, kind, x, y, place)
+                elseif doorway ~= nil then
+                    scan.doorway[doorway] = scan.doorway[doorway] + 1
+                    noteOccupant(occupants, id, obj, kind, x, y, "doorway", doorway)
                 else
-                    local s = doorwayAt(x, y)
-                    if s ~= nil then
-                        scan.doorway[s] = scan.doorway[s] + 1
-                        noteOccupant(occupants, id, obj, kind, x, y, "doorway", s)
-                    else
-                        outside[id] = true
-                        for _, w in ipairs(SIDES) do
-                            if nearOuterDoor(w, x, y) then
-                                scan.waiting[w] = scan.waiting[w] + 1
-                            end
+                    outside[id] = true
+                    for _, w in ipairs(SIDES) do
+                        if nearOuterDoor(w, x, y) then
+                            scan.waiting[w] = scan.waiting[w] + 1
                         end
                     end
                 end
@@ -634,6 +834,9 @@ local function scanPeople()
             if x ~= nil and id ~= nil then
                 local carrier = occupants[number(Get(obj, "CarrierId.i"), -1)]
                 local place = insideAt(x, y)
+                if place == nil and crates[id] ~= nil and doorwayAt(x, y) == nil then
+                    place = stillInsideAt(x, y)
+                end
                 if carrier ~= nil then
                     noteOccupant(crates, id, obj, kind, x, y, carrier.where, carrier.zone, carrier.cameIn)
                 elseif place ~= nil then
@@ -719,6 +922,7 @@ local function creditSearch(guard, work, pending)
     end
     if best ~= nil then
         best.searched = true
+        unmark(best)
         table.remove(pending, bestAt)
         log(best.kind .. " " .. best.id .. " searched")
     end
@@ -738,13 +942,24 @@ local function watchSearches(mayRequest)
     if mayRequest then
         local unasked = {}
         for _, record in ipairs(pending) do
-            if record.requested == nil then
+            if record.requested == nil and record.marked == nil then
                 unasked[#unasked + 1] = record
             end
         end
         if #unasked > 0 then
             requestSearches(unasked)
         end
+    end
+    -- The world script answers a call by clearing the marks and the call.
+    -- While any mark still stands the call is kept up.
+    local waiting = false
+    for _, record in ipairs(pending) do
+        if record.marked ~= nil and not acknowledged(record) then
+            waiting = true
+        end
+    end
+    if waiting and nameOf(this) ~= CALL_NAME then
+        this.Name = CALL_NAME
     end
     local seen, progress = {}, false
     for _, guard in ipairs(scan.guards) do
@@ -817,9 +1032,9 @@ local function mayOpen(s)
     return true
 end
 
--- Whether anyone unsearched is in a side's vestibule or one of its
+-- Whether anyone unsearched is in a side's lobby or one of its
 -- doorways, from either side or only from the other one.
-local function vestibuleHeld(s, fromOther)
+local function lobbyHeld(s, fromOther)
     for _, list in ipairs({ occupants, crates }) do
         for _, record in pairs(list) do
             if record.where ~= "chamber" and record.zone == s and record.target
@@ -832,13 +1047,14 @@ local function vestibuleHeld(s, fromOther)
 end
 
 -- A side's outer door alone may open only behind a shut inner door, and
--- only while nobody unsearched from the other side is in its vestibule.
+-- only while nobody unsearched from the other side is in its lobby.
 local function mayOpenOuter(s)
-    return doors[s].inner ~= nil and not vestibuleHeld(s, true)
+    return doors[s].inner ~= nil and not lobbyHeld(s, true)
 end
 
 -- Where a guard is heading: "inside" for a destination in the room or one
--- of its doorways, "away" for one elsewhere, nil for none the engine has set.
+-- of its doorways, or beside someone on the books wherever the map puts
+-- them, "away" for one elsewhere, nil for none the engine has set.
 local function heading(guard)
     local dest = Get(guard.obj, "Dest")
     if type(dest) ~= "table" then
@@ -851,6 +1067,13 @@ local function heading(guard)
     if insideAt(dx, dy) ~= nil or doorwayAt(dx, dy) ~= nil then
         return "inside"
     end
+    for _, list in ipairs({ occupants, crates }) do
+        for _, record in pairs(list) do
+            if record.id ~= guard.id and distance(dx, dy, record.x, record.y) <= DEST_REACH then
+                return "inside"
+            end
+        end
+    end
     return "away"
 end
 
@@ -860,8 +1083,7 @@ local function guardsWaiting()
     local found = {}
     for _, guard in ipairs(scan.guards) do
         local last = admitted[guard.id]
-        if (last == nil or clock - last >= ADMIT_COOLDOWN)
-            and insideAt(guard.x, guard.y) == nil and doorwayAt(guard.x, guard.y) == nil
+        if (last == nil or clock - last >= ADMIT_COOLDOWN) and guard.place == nil
             and number(Get(guard.obj, "JobId"), -1) >= 0 then
             for _, s in ipairs(SIDES) do
                 if found[s] == nil and nearOuterDoor(s, guard.x, guard.y) then
@@ -873,10 +1095,10 @@ local function guardsWaiting()
     return found
 end
 
--- Whether a guard stands in the chamber, or in a side's vestibule.
+-- Whether a guard stands in the chamber, or in a side's lobby.
 local function guardIn(place)
     for _, guard in ipairs(scan.guards) do
-        if insideAt(guard.x, guard.y) == place then
+        if guard.place == place then
             return true
         end
     end
@@ -887,7 +1109,7 @@ end
 -- One on the way out, such as an escort passing through, does not count.
 local function searcherInside()
     for _, guard in ipairs(scan.guards) do
-        if insideAt(guard.x, guard.y) ~= nil and heading(guard) ~= "away" then
+        if guard.place ~= nil and guard.place ~= "doorway" and heading(guard) ~= "away" then
             return true
         end
     end
@@ -962,9 +1184,9 @@ local function step(c)
             return
         end
         -- With a guard inside the inner doors stand open behind the shut
-        -- outer doors, so anyone held in a vestibule can be reached. With
+        -- outer doors, so anyone held in a lobby can be reached. With
         -- nobody inside to reach them they stay shut, so nobody unsearched
-        -- ends up in the vestibule of the side they did not come in by,
+        -- ends up in the lobby of the side they did not come in by,
         -- where they would keep its outer door from ever opening.
         if searcherInside() then
             holdInnersOpen()
@@ -1000,7 +1222,7 @@ local function step(c)
             end
         elseif stage == "outer" then
             -- Someone unsearched from the other side who reached this
-            -- vestibule before the inner door shut would walk straight out.
+            -- lobby before the inner door shut would walk straight out.
             if not mayOpenOuter(side) then
                 shutThen("sealed")
                 return

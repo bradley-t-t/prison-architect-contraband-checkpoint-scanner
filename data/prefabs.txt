@@ -3,15 +3,17 @@ BEGIN Prefab
     w           3
     h           7
     RoomType    StripSearch
-    BEGIN Material  Type    ConcreteTiles        x   1  y   1  w   1  h   5  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   4  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   1  w   1  h   2  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   4  w   1  h   2  END
+    BEGIN Material  Type    NewCargoFloor        x   1  y   3  w   1  h   1  END
     BEGIN Zone      Type    StripSearch          x   1  y   3  w   1  h   1  END
     BEGIN Object    Type    StripSearchDoorIn    x   1  y   0  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorIn    x   1  y   2  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchScanner   x   1  y   3  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   1  y   4  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   1  y   6  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   1  y   1  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   1  y   5  orX  0  orY  1  END
 END
 
 BEGIN Prefab
@@ -19,17 +21,23 @@ BEGIN Prefab
     w           4
     h           8
     RoomType    StripSearch
-    BEGIN Material  Type    ConcreteTiles        x   1  y   1  w   2  h   6  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   1  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   6  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   2  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   5  w   2  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   1  w   2  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   5  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   6  w   2  h   1  END
+    BEGIN Material  Type    NewCargoFloor        x   1  y   3  w   2  h   2  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   5  w   1  h   1  END
     BEGIN Zone      Type    StripSearch          x   1  y   3  w   2  h   2  END
     BEGIN Object    Type    StripSearchDoorIn    x   2  y   0  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorIn    x   2  y   2  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchScanner   x   2  y   4  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   2  y   5  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   2  y   7  orX  0  orY  1  END
+    BEGIN Object    Type    OfficeDesk           x   1  y   3  orX  1  orY  0  END
+    BEGIN Object    Type    Light                x   1  y   1  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   2  y   3  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   1  y   6  orX  0  orY  1  END
 END
 
 BEGIN Prefab
@@ -37,19 +45,26 @@ BEGIN Prefab
     w           5
     h           9
     RoomType    StripSearch
-    BEGIN Material  Type    ConcreteTiles        x   1  y   1  w   3  h   7  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   1  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   3  y   1  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   7  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   3  y   7  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   3  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   6  w   3  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   1  w   3  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   6  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   7  w   3  h   1  END
+    BEGIN Material  Type    NewCargoFloor        x   1  y   3  w   3  h   3  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   3  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   6  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   3  y   6  w   1  h   1  END
     BEGIN Zone      Type    StripSearch          x   1  y   3  w   3  h   3  END
     BEGIN Object    Type    StripSearchDoorIn    x   2  y   0  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorIn    x   2  y   2  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchScanner   x   2  y   4  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   2  y   6  orX  0  orY  1  END
     BEGIN Object    Type    StripSearchDoorOut   x   2  y   8  orX  0  orY  1  END
+    BEGIN Object    Type    FilingCabinet        x   1  y   3  orX  0  orY  1  END
+    BEGIN Object    Type    OfficeDesk           x   1  y   4  orX  1  orY  0  END
+    BEGIN Object    Type    Light                x   2  y   1  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   2  y   3  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   2  y   7  orX  0  orY  1  END
 END
 
 BEGIN Prefab
@@ -57,17 +72,25 @@ BEGIN Prefab
     w           6
     h           10
     RoomType    StripSearch
-    BEGIN Material  Type    ConcreteTiles        x   1  y   1  w   4  h   8  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   1  w   2  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   4  y   1  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   8  w   2  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   4  y   8  w   1  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   4  h   1  END
-    BEGIN Material  Type    ConcreteWall         x   1  y   7  w   4  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   1  w   4  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   2  y   7  w   1  h   1  END
+    BEGIN Material  Type    ConcreteFloor        x   1  y   8  w   4  h   1  END
+    BEGIN Material  Type    NewCargoFloor        x   1  y   3  w   4  h   4  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   2  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   3  y   2  w   2  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   1  y   7  w   1  h   1  END
+    BEGIN Material  Type    ConcreteWall         x   3  y   7  w   2  h   1  END
     BEGIN Zone      Type    StripSearch          x   1  y   3  w   4  h   4  END
-    BEGIN Object    Type    StripSearchDoorIn    x   3  y   0  orX  0  orY  1  END
-    BEGIN Object    Type    StripSearchDoorIn    x   3  y   2  orX  0  orY  1  END
-    BEGIN Object    Type    StripSearchScanner   x   3  y   5  orX  0  orY  1  END
-    BEGIN Object    Type    StripSearchDoorOut   x   3  y   7  orX  0  orY  1  END
-    BEGIN Object    Type    StripSearchDoorOut   x   3  y   9  orX  0  orY  1  END
+    BEGIN Object    Type    StripSearchDoorIn    x   2  y   0  orX  0  orY  1  END
+    BEGIN Object    Type    StripSearchDoorIn    x   2  y   2  orX  0  orY  1  END
+    BEGIN Object    Type    StripSearchScanner   x   2  y   5  orX  0  orY  1  END
+    BEGIN Object    Type    StripSearchDoorOut   x   2  y   7  orX  0  orY  1  END
+    BEGIN Object    Type    StripSearchDoorOut   x   2  y   9  orX  0  orY  1  END
+    BEGIN Object    Type    FilingCabinet        x   1  y   3  orX  0  orY  1  END
+    BEGIN Object    Type    OfficeDesk           x   1  y   4  orX  1  orY  0  END
+    BEGIN Object    Type    Table                x   4  y   3  orX  1  orY  0  END
+    BEGIN Object    Type    Light                x   3  y   1  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   3  y   4  orX  0  orY  1  END
+    BEGIN Object    Type    Light                x   3  y   8  orX  0  orY  1  END
 END
