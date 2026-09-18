@@ -1,10 +1,10 @@
 BEGIN Object
-    Name                 StripSearchScanner
+    Name                 MedicalProbeMachine
     ConstructionTime     10.0000
     Toughness            200.000
-    Price                -1000
+    Price                -500
     Filter               Security
-    RenderDepth          3
+    RenderDepth          1
     Group                StaticObject
     BlockedBy            Wall
     BlockedBy            UtilityStation
@@ -12,58 +12,14 @@ BEGIN Object
     MadeOf               SolidMetal
     Properties           StaticObject
     Properties           Scripted
-    Properties           DontAvoid
-    NumSprites           4
+    NumSprites           2
     BEGIN ToolbarSprite  x 0  y 0  w 2  h 2  END
     BEGIN Sprite         x 0  y 0  w 2  h 2  RotateType 0  TopAligned false  END
     BEGIN Sprite         x 2  y 0  w 2  h 2  RotateType 0  TopAligned false  END
-    BEGIN Sprite         x 4  y 0  w 2  h 2  RotateType 0  TopAligned false  END
-    BEGIN Sprite         x 6  y 0  w 2  h 2  RotateType 0  TopAligned false  END
-END
-
-BEGIN Object
-    Name                 StripSearchDoorIn
-    ConstructionTime     10.0000
-    Toughness            300.000
-    Teleportable         true
-    Price                -300
-    Filter               Security
-    RenderDepth          2
-    Group                StaticObject
-    BlockedBy            StaticObject
-    BlockedBy            UtilityStation
-    MadeOf               SolidMetal
-    Properties           StaticObject
-    Properties           Door
-    NumSprites           1
-    BEGIN ToolbarSprite  x 0  y 2  w 2  h 2  END
-    BEGIN Sprite         x 0  y 2  w 2  h 2  RotateType 1  TopAligned false  END
-END
-
-BEGIN Object
-    Name                 StripSearchDoorOut
-    ConstructionTime     10.0000
-    Toughness            300.000
-    Teleportable         true
-    Price                -300
-    Filter               Security
-    RenderDepth          2
-    Group                StaticObject
-    BlockedBy            StaticObject
-    BlockedBy            UtilityStation
-    MadeOf               SolidMetal
-    Properties           StaticObject
-    Properties           Door
-    NumSprites           1
-    BEGIN ToolbarSprite  x 8  y 2  w 2  h 2  END
-    BEGIN Sprite         x 8  y 2  w 2  h 2  RotateType 1  TopAligned false  END
 END
 
 BEGIN Room
     Name                 StripSearch
-    BEGIN Requirement Type Enclosed  END
-    BEGIN Requirement Type MinimumSize  x 1  y 1  END
-    BEGIN Requirement Type Object  Id StripSearchScanner  END
-    BEGIN LikelyObject  Id  StripSearchDoorIn  END
-    BEGIN LikelyObject  Id  StripSearchDoorOut  END
+    BEGIN Requirement Type MinimumSize  x 2  y 2  END
+    BEGIN Requirement Type Object  Id MedicalProbeMachine  END
 END

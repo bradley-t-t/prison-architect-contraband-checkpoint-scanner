@@ -1,19 +1,7 @@
-object_StripSearchScanner                    Strip Search Scanner
-buildtoolbar_popup_obj_StripSearchScanner    Runs a Strip Search room. Build it in a walled room with a Strip Search Entrance and a Strip Search Exit, or use the quick builds. It lets people in through one door, shuts them in, calls guards to search every prisoner, crooked guard and crate inside, and only then opens the other door. Nothing crosses the room without a search.
-object_StripSearchDoorIn                     Strip Search Entrance
-buildtoolbar_popup_obj_StripSearchDoorIn     The way into a Strip Search room. The room's scanner holds it: open while people are coming in, shut while they are searched, and never open together with the exit.
-object_StripSearchDoorOut                    Strip Search Exit
-buildtoolbar_popup_obj_StripSearchDoorOut    The way out of a Strip Search room. The room's scanner holds it shut until everyone inside has been searched, so nothing gets past the room unsearched.
-room_stripsearch                             Strip Search
-buildtoolbar_popup_room_stripsearch          A search checkpoint. Everyone who goes through is shut in and searched by a guard before the far door opens, so contraband cannot be carried past it. Build with the quick builds, or by hand: a walled room with a Strip Search Scanner, a Strip Search Entrance in one wall and a Strip Search Exit in another, each best with a lobby behind a second door of the same kind.
-tooltip_StripSearchScanner_Intake            Letting people in.
-tooltip_StripSearchScanner_Sealed            Shut. Everyone inside is being searched.
-tooltip_StripSearchScanner_Release           All clear. Letting people out.
-quickbuild_stripsearch1                      Strip Search 1x1
-quickbuild_StripSearch1                      Strip Search 1x1
-quickbuild_stripsearch2                      Strip Search 2x2
-quickbuild_StripSearch2                      Strip Search 2x2
-quickbuild_stripsearch3                      Strip Search 3x3
-quickbuild_StripSearch3                      Strip Search 3x3
-quickbuild_stripsearch4                      Strip Search 4x4
-quickbuild_StripSearch4                      Strip Search 4x4
+object_MedicalProbeMachine                    Medical Probe Machine
+buildtoolbar_popup_obj_MedicalProbeMachine    Runs the Strip Search room it stands in. Every prisoner who steps into the room is probed, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too. Nobody unsearched leaves the room, and neither does anyone carrying an unsearched crate.
+room_stripsearch                              Strip Search
+buildtoolbar_popup_room_stripsearch           Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor or a doorway and put a Medical Probe Machine in it. It needs no doors of its own. Keep guards close by: with none free, people wait.
+tooltip_MedicalProbeMachine_NoRoom            Not in a Strip Search room. Zone one over it.
+tooltip_MedicalProbeMachine_Holding           Holding people until a guard has searched them.
+tooltip_MedicalProbeMachine_Clear             Nobody waiting to be searched.

@@ -1,4 +1,4 @@
 Name                 "Strip Search"
 Author               Trenton
-Description          "A search checkpoint room. Everyone who goes through it is shut in and searched by a guard before the far door opens, so no prisoner, crooked guard or crate carries contraband past it in either direction. Four quick builds, 1x1 to 4x4, each with a lobby and two doors on either side of a furnished, lit room."
-Version              1.1
+Description          "A Strip Search room and the Medical Probe Machine that runs it. Every prisoner who steps into the room is probed, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too. Nobody unsearched leaves the room. It needs no doors of its own."
+Version              2.0

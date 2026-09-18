@@ -1,57 +1,44 @@
 # Strip Search
 
-A Prison Architect mod. A Strip Search room is a checkpoint: everyone who
-goes through it is shut in and searched by a guard before the far door
-opens, so nothing carries contraband past it, in either direction.
+A Prison Architect mod. Anyone who steps into a Strip Search room is
+searched by a guard before they can leave it.
 
 ## What you get
 
-- **Strip Search Scanner**, in the Security objects. It runs the room it
-  stands in.
-- **Strip Search Entrance** and **Strip Search Exit**, two doors the scanner
-  holds open or shut itself. The game never opens them on its own.
 - The **Strip Search** room type.
-- Four quick builds in the Quick Rooms menu: **Strip Search 1x1, 2x2, 3x3
-  and 4x4**, named for the size of the room people are searched in. Each
-  runs straight through: an entrance in the top wall, a lobby the width of
-  the room, a second door, the room, and the same again on the way out.
-  The room has a steel cargo floor, the lobbies are concrete, and every
-  part has a light. From 2x2 up the room is furnished beside the way
-  through: a desk in the 2x2, a desk and a filing cabinet in the 3x3, and
-  in the 4x4 a table along the far wall as well. None of it is anything a
-  prisoner can use. A chair or a bench meets their need for comfort, and
-  one in here would bring prisoners in from all over the prison to sit.
+- The **Medical Probe Machine**, in the Security objects. It runs the room
+  it stands in, and the room needs nothing else: no doors of its own, no
+  particular walls or floor.
 
 ## How it works
 
-The scanner runs the doors as an airlock.
+Zone a Strip Search room across a corridor, a doorway or the way into a
+cell block, and put a Medical Probe Machine anywhere in it. The room is
+every tile zoned together with the machine's.
 
-1. One side's doors are open and people walk in. Once nobody new has
-   stepped in for a moment, they shut.
-2. With everything shut, the scanner asks the game for a guard search of
-   everyone inside who could be carrying anything: every prisoner, any
-   guard the game knows to be crooked, and every crate, on the floor or in
-   someone's arms. The game's own search is the only thing that takes
-   contraband off a person, so that is what is used.
-3. A guard comes. One arriving on the side people came in by is let
-   straight in. One arriving on the far side is let into that side's
-   lobby first, the outer door shut behind them, and only then the inner
-   door opened, so nobody inside can slip out past them.
-4. When every search is done the far side's doors open and the room
-   empties. Anyone who walks in while a door is open is unsearched, and the
-   doors on the other side stay shut until they have been searched too.
+1. Someone steps in. A prisoner is probed on the way in, which costs them a
+   small injury, once per visit.
+2. The machine asks the game for a guard search of everyone inside who
+   could be carrying anything: every prisoner, any guard the game knows to
+   be crooked, and every crate, on the floor or in someone's arms. The
+   game's own search is the only thing that takes contraband off a person,
+   and one search takes everything the guard finds, so that is what is
+   used.
+3. Until that search is done they do not leave. There is no door to hold
+   shut, so the machine holds the person: anyone unsearched who steps out
+   of the room is put back where they last stood inside it. Someone
+   carrying an unsearched crate is put back the same way, crate and all.
+4. Once searched they walk on. Coming back in later is a new visit and a
+   new search.
 
-The room works in both directions: someone waiting at the far side while
-the room is empty is let in there and searched on the way back. Escorted
-prisoners, staff and deliveries pass through like anyone else; only
-prisoners, crooked guards and crates are searched.
+Other staff, visitors and dogs walk through freely. The game's search does
+nothing to them, so holding them would only block the corridor.
 
-The scanner cannot see what a person carries and the game reports nothing
+The machine cannot see what a person carries and the game reports nothing
 when a search ends, so it watches the guards instead. A guard's job is
-readable, and a search is one job: a job that ends after a search's worth
-of standing against someone still to be searched was that search. Nobody
-leaves by the far side until everyone who came in has a search to their
-name.
+readable, and a search is one job: a job that ends after a search's worth of
+standing against the person it was walking to was that person's search. The
+machine's light is green with nobody waiting and red while it holds anyone.
 
 ## What it cannot do
 
@@ -60,45 +47,31 @@ These are the game's own rules, and no room changes them:
 - A guard whose needs are neglected skips the confiscation half the time,
   and a crooked guard who has been bribed skips it. Keep your guards happy
   and your staff clean.
-- Contraband thrown over a wall, or dug under one, never goes through a
-  door.
-- The room holds people until a guard has searched them. With no guard free
-  they wait. Keep guards near it.
+- Contraband thrown over a wall, or dug under one, never goes through the
+  room.
+- The game will not search the same person twice inside thirty seconds.
+  Someone who walks straight back in waits that out.
+- With no guard free, people wait. Keep guards near the room.
 
-## Building by hand
+## Why the room needs the machine
 
-A walled room with the scanner inside, a Strip Search Entrance in one wall
-and a Strip Search Exit in another. The quick builds add a lobby behind a
-second door of the same kind on each side; that is what lets a guard in
-from the far side safely, and a side built with a single door can only
-admit a guard when everyone unsearched inside came in that way. Zone the
-room as Strip Search so the scanner knows its shape.
-
-A lobby can be any width. The scanner maps it from the tiles between its
-two doors out sideways to the walls, and it knows a wall by its material's
-name. With walls from another mod that it cannot tell are walls, it maps
-only the tiles between the doors and follows anyone who steps off them, so
-nobody drops off its books inside either way. Keep walls one tile thick:
-the game draws a thicker wall as a lattice.
+The game tells a script which room a tile belongs to, and never what kind
+of room that is. The machine is how the mod knows a room is a Strip Search
+room: it reads the room its own tile is zoned into.
 
 ## Files
 
-- `data/scripts/StripSearchScanner.lua` is the scanner, written by hand.
+- `data/scripts/MedicalProbeMachine.lua` is the machine, written by hand.
 - `data/world.lua` asks the game for the searches. The game gives its work
   queue to a mod's world script and to no object's own script, so the
-  scanner marks who is to be searched and this file does the asking.
+  machine marks who is to be searched and this file does the asking.
 - `tools/gen_assets.py` writes everything else the mod ships: the sprites,
-  `materials.txt`, `prefabs.txt`, the language file and the thumbnail. The
-  quick builds are drawn in it as maps, a character to a tile, and
-  `tools/preview.png` shows each as a plan.
+  `materials.txt`, the language file and the thumbnail.
 - `tools/simulate.py` runs both scripts against a mock of the game (needs
   the `lupa` package), each in its own Lua state with only what the game
-  gives that kind of script. Its map is the quick build the mod ships, read
-  from `data/prefabs.txt`: four doors, people walking through in both
-  directions and spreading out wherever a shut door holds them up, guards
-  who take the search jobs and stand against people for the game's search
-  time, escorts, crates and crooked guards. Every scenario runs with walls
-  the scanner can recognise and again with walls it cannot. It checks, over
-  every seed and room size, that nothing crosses the room without a finished
-  search, that no way through ever stands open, and that everyone gets
-  through in the end.
+  gives that kind of script. People walk a corridor with the room zoned
+  across it, in both directions, and never stop trying to walk on. It
+  checks, over every seed, that nobody and no crate gets more than a step
+  out of the room unsearched, that everyone gets through in the end, that
+  each prisoner is hurt once a visit, and that everyone has their own name
+  back afterwards.
