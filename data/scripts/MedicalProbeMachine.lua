@@ -40,7 +40,10 @@
 -- searched was that search.
 
 local SCAN_INTERVAL = 0.25
-local LAYOUT_RECHECK = 5
+-- With nobody in reach the machine looks this often instead. Reach runs
+-- MARGIN tiles past the room, more than anyone walks in that time.
+local IDLE_INTERVAL = 1
+local LAYOUT_RECHECK = 10
 local MAX_ROOM_TILES = 400
 -- How far past the room's edge people are looked for.
 local MARGIN = 4
@@ -84,14 +87,25 @@ local MOVERS = {
 local SEARCHERS = { Guard = true, ArmedGuard = true, RiotGuard = true, DogHandler = true }
 -- The only things the game lets contraband travel in.
 local CRATES = { "Box", "Stack" }
+-- The kinds looked for at every look: whoever can be searched and whoever
+-- searches. Looking around is a search of the map, so the list is as short
+-- as it can be.
+local WATCHED_KINDS = { "Prisoner", "Guard", "ArmedGuard", "RiotGuard", "DogHandler", "Box", "Stack" }
+local WATCHED = {}
+for _, kind in ipairs(WATCHED_KINDS) do
+    WATCHED[kind] = true
+end
 
 local Find = Object.GetNearbyObjects
 local Get = Object.GetProperty
 local Set = Object.SetProperty
 
 local clock = 0
-local scanTimer = SCAN_INTERVAL
-local layoutTimer = LAYOUT_RECHECK
+-- Timers start at a random point so several machines do not all look on
+-- the same tick.
+local scanTimer = math.random() * SCAN_INTERVAL
+local scanEvery = SCAN_INTERVAL
+local layoutTimer = math.random() * LAYOUT_RECHECK
 
 -- The room's tiles keyed "x,y", and how far it reaches from the machine.
 local roomTiles = {}
@@ -102,7 +116,7 @@ local scanned = false
 
 -- Everyone and every crate in the room, or held to it, keyed by object id:
 --   { id, obj, kind, x, y, inX, inY (where they last stood inside), target,
---     searched, marked, requested, ownName, seen, carrier (a crate's) }
+--     searched, marked, requested, ownName, seen }
 local records = {}
 -- Each guard's job as last seen, keyed by guard id: { id, work = seconds
 -- stood against each person, dist = that time weighted by how far they were
@@ -142,8 +156,9 @@ local function position(obj)
     return tonumber(pos.x), tonumber(pos.y)
 end
 
+-- A tile as one number, which costs less than building a string.
 local function tileKey(x, y)
-    return math.floor(x) .. "," .. math.floor(y)
+    return math.floor(x) * 4096 + math.floor(y)
 end
 
 local function distance(ax, ay, bx, by)
@@ -314,7 +329,6 @@ local function setDown(record, carrier)
     Set(record.obj, "CarrierId.i", -1)
     Set(record.obj, "CarrierId.u", -1)
     Set(record.obj, "Carried", 0)
-    record.carrier = nil
     log(record.kind .. " " .. tostring(record.id) .. " set down by " .. carrier.kind .. " " .. tostring(carrier.id))
 end
 
@@ -338,49 +352,66 @@ local function note(id, obj, kind, x, y)
     return record
 end
 
--- Everyone within reach of the room. Someone inside is recorded, and their
--- place inside remembered. Someone outside is looked at only if already
--- kept. The dead are ignored. A crate goes where its carrier goes. Returns
--- the ids of everyone recorded who is now outside.
-local function scanPeople()
-    local range = roomReach + MARGIN
-    guards = {}
-    local outside = {}
-    for _, kind in ipairs(MOVERS) do
-        for obj, _ in pairs(Find(kind, range) or {}) do
-            local x, y = position(obj)
-            local id = objectId(obj)
-            if x ~= nil and id ~= nil and not isDead(obj) then
-                if SEARCHERS[kind] then
-                    guards[#guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
-                end
-                if inside(x, y) then
-                    local record = note(id, obj, kind, x, y)
-                    record.inX, record.inY = x, y
-                elseif records[id] ~= nil then
-                    note(id, obj, kind, x, y)
-                    outside[id] = true
+-- Whoever is carrying something, as an object the script can write to. A
+-- guard is known from this look already. Anyone else means searching the
+-- map for every kind of person there is, the dearest thing this script ever
+-- does, so it is done once in a look at most and only in a look that has
+-- something in someone's arms to put down.
+local function carrierOf(carrierId, range, everyone)
+    for _, guard in ipairs(guards) do
+        if guard.id == carrierId then
+            return guard, everyone
+        end
+    end
+    local record = records[carrierId]
+    if record ~= nil then
+        return record, everyone
+    end
+    if everyone == nil then
+        everyone = {}
+        for _, kind in ipairs(MOVERS) do
+            if not WATCHED[kind] then
+                for obj, _ in pairs(Find(kind, range) or {}) do
+                    local id = objectId(obj)
+                    if id ~= nil then
+                        everyone[id] = { obj = obj, id = id, kind = kind }
+                    end
                 end
             end
         end
     end
-    for _, kind in ipairs(CRATES) do
+    return everyone[carrierId], everyone
+end
+
+-- Everyone who matters within reach of the room: prisoners, the guards who
+-- search, and crates. Nobody else is ever searched or held, so nobody else
+-- is looked for. Someone inside is recorded, and their place inside
+-- remembered. Someone outside is looked at only if already kept. The dead
+-- are ignored. Returns the ids of everyone recorded who is now outside, and
+-- whether anyone at all was in reach.
+local function scanPeople()
+    local range = roomReach + MARGIN
+    guards = {}
+    local outside, anyone = {}, false
+    for _, kind in ipairs(WATCHED_KINDS) do
+        local crate = isCrateKind(kind)
         for obj, _ in pairs(Find(kind, range) or {}) do
+            anyone = true
             local x, y = position(obj)
             local id = objectId(obj)
             if x ~= nil and id ~= nil then
-                local carrierId = number(Get(obj, "CarrierId.i"), -1)
-                local carrier = records[carrierId]
-                if inside(x, y) or (carrier ~= nil and not outside[carrierId]) then
+                local known = records[id] ~= nil
+                local within = inside(x, y)
+                if SEARCHERS[kind] then
+                    guards[#guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
+                end
+                if (within or known) and (crate or not isDead(obj)) then
                     local record = note(id, obj, kind, x, y)
-                    record.carrier = carrier ~= nil and carrierId or nil
-                    if inside(x, y) then
+                    if within then
                         record.inX, record.inY = x, y
+                    else
+                        outside[id] = true
                     end
-                elseif records[id] ~= nil then
-                    local record = note(id, obj, kind, x, y)
-                    record.carrier = carrierId >= 0 and carrierId or nil
-                    outside[id] = true
                 end
             end
         end
@@ -389,39 +420,32 @@ local function scanPeople()
     -- prisoner under escort as much as for a crate: the game's search job
     -- fails for as long as they are carried. Whoever carries someone or
     -- something still to be searched lets go of it in the room.
+    local everyone = nil
     for id, record in pairs(records) do
         if held(record) and not outside[id] and record.inX ~= nil then
-            local carrier = records[number(Get(record.obj, "CarrierId.i"), -1)]
-            if carrier ~= nil then
-                setDown(record, carrier)
+            local carrierId = number(Get(record.obj, "CarrierId.i"), -1)
+            if carrierId >= 0 then
+                local carrier
+                carrier, everyone = carrierOf(carrierId, range, everyone)
+                if carrier ~= nil then
+                    setDown(record, carrier)
+                end
             end
         end
     end
-    return outside
+    return outside, anyone
 end
 
 -- Settles everyone the last look saw outside, once the searches that look
--- could see finished have been counted. An unsearched crate outside in
--- someone's arms: the carrier goes back, and the crate with them. One on
--- the floor outside is put back itself.
+-- could see finished have been counted. Anyone still to be searched is put
+-- back. Anyone else has left, and is forgotten.
 local function enforce(outside)
-    local carrying = {}
-    for _, record in pairs(records) do
-        if isCrateKind(record.kind) and held(record) and record.carrier ~= nil then
-            carrying[record.carrier] = true
-        end
-    end
     for id, record in pairs(records) do
         if clock - record.seen > SEEN_GRACE then
             unmark(record)
             records[id] = nil
         elseif outside[id] then
-            local crate = isCrateKind(record.kind)
-            if crate and held(record) then
-                if record.carrier == nil then
-                    putBack(record)
-                end
-            elseif not crate and (held(record) or carrying[id]) then
+            if held(record) then
                 putBack(record)
             else
                 unmark(record)
@@ -656,12 +680,13 @@ function Update(timePassed)
         mapRoom()
     end
     scanTimer = scanTimer + timePassed
-    if scanTimer >= SCAN_INTERVAL then
+    if scanTimer >= scanEvery then
         local elapsed = scanTimer
         scanTimer = 0
-        local outside = scanPeople()
+        local outside, anyone = scanPeople()
         local waiting = watchSearches(elapsed)
         enforce(outside)
         showTooltip(waiting)
+        scanEvery = (anyone or next(records) ~= nil) and SCAN_INTERVAL or IDLE_INTERVAL
     end
 end

@@ -14,7 +14,7 @@
 -- guard's needs. The game does that by name and a moment later, so the name
 -- is left on until the next look and cleared then.
 
-local POLL = 0.25
+local POLL = 0.5
 local CALL_NAME = "StripSearchCall"
 local MARK_PREFIX = "StripSearchTarget"
 local GUARD_PREFIX = "StripSearchGuard"
