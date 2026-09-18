@@ -10,9 +10,8 @@ the game's ten seconds (five for a crate) and only then clear them. There
 is a guard escorting a shackled prisoner, workmen with crates in their arms, which the game will not search until
 they are set down, a crate left on the room's floor, and a crooked guard.
 
-Every target carries contraband. Every guard starts fed up, which in the
-game lets a search miss, and one of the searching guards is crooked and
-bribed, whose searches always miss while they are crooked. A Room Scanner
+Every target carries contraband, and one of the searching guards is crooked
+and bribed, whose searches always miss while they are crooked. A Room Scanner
 stands in the room.
 
 Each script runs in its own Lua state with only what the game gives that
@@ -124,7 +123,7 @@ class World:
         for i in range(3):
             g = Thing("Guard", 0.5 + i, 4.5)
             g.home = (g.x, g.y)
-            g.fed_up = True
+            g.fed_up = False
             if i == 0:
                 g.props["Corrupted"] = True
             self.guards.append(g)
@@ -250,15 +249,6 @@ class World:
                 return      # the game will not search a crate in someone's arms
             world.jobs.append(Job(o))
 
-        def set_needs(name, value):
-            # the game does this by name: the first object carrying it
-            for o in world.objects():
-                if o.props.get("Name") == name:
-                    if float(value) == 0:
-                        o.fed_up = False
-                        o.tended_at = world.t
-                    return
-
         def get_cell(x, y):
             return L.table(Room=L.table(i=ROOM_ID if in_room(x, y) else -1, u=1))
 
@@ -272,8 +262,9 @@ class World:
             g["this"] = proxy(self.machine)
             g["Game"] = L.table(DebugOut=debug_out)
         else:
-            g["Game"] = L.table(DebugOut=debug_out, GetObject=luafn(L, get_object),
-                                SetNeeds=luafn(L, set_needs))
+            # No campaign commands: in the game they crash outside the campaign,
+            # so a script that reaches for one fails here too.
+            g["Game"] = L.table(DebugOut=debug_out, GetObject=luafn(L, get_object))
             g["WorkQueue"] = L.table(Request=luafn(L, request))
 
     def step_towards(self, m, tx, ty, speed=WALK):
@@ -315,9 +306,6 @@ class World:
                             o.searches += 1
                         g.job, g.dest = None, None
         for g in self.guards:
-            # needs come back: a guard nobody tends is fed up again in a while
-            if self.t - getattr(g, "tended_at", -1e9) > 20:
-                g.fed_up = True
             if g.job is None:
                 self.step_towards(g, *g.home)
         for m in self.movers:

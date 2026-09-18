@@ -177,10 +177,9 @@ def language_text():
                "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
                "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
                "leaves the room.")
-    scanner = ("Stands on the floor of a Strip Search room and makes every search there certain. A guard "
-               "searching in the room has their needs met while they work, so a search is never a fed-up "
-               "guard's, and a search by a crooked guard is not counted: the person is searched again by "
-               "someone else.")
+    scanner = ("Stands on the floor of a Strip Search room and catches crooked guards. A crooked guard who "
+               "comes to search in the room searches as an honest one would, so a bribe buys nothing, and "
+               "comes out of the job exposed.")
     room = ("Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor "
             "or a doorway and put a Medical Probe Machine and a Room Scanner in it. It needs no doors of "
             "its own. Keep guards close by: with none free, people wait.")
@@ -192,7 +191,7 @@ def language_text():
         ("room_stripsearch", "Strip Search"),
         ("buildtoolbar_popup_room_stripsearch", room),
         ("tooltip_MedicalProbeMachine_NoRoom", "Not in a Strip Search room. Zone one over it."),
-        ("tooltip_MedicalProbeMachine_NoScanner", "No Room Scanner in the room. Searches here can miss."),
+        ("tooltip_MedicalProbeMachine_NoScanner", "No Room Scanner in the room. A bribed guard's search here can miss."),
         ("tooltip_MedicalProbeMachine_Holding", "Holding people until a guard has searched them."),
         ("tooltip_MedicalProbeMachine_Clear", "Nobody waiting to be searched."),
     ]

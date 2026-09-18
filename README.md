@@ -51,25 +51,29 @@ A person's search takes twice as long as a crate's, so the length of the
 job tells the two apart when a crate lies beside someone. The
 machine's light is green with nobody waiting and red while it holds anyone.
 
-## Why the Room Scanner finds everything
+## What the Room Scanner does
 
-The game lets a search miss in two cases only. A guard whose needs are
-neglected skips the confiscation half the time, and a crooked guard who has
-been bribed skips it. With a Room Scanner in the room neither happens:
+The game lets a search miss in two cases. A crooked guard who has been
+bribed skips the confiscation, and a guard whose needs are neglected skips
+it some of the time. The Room Scanner closes the first:
 
-- A guard at work on a search in the room has their needs met while they
-  work, so the search is never a fed-up guard's.
-- A crooked guard who comes to search is caught. They search as an honest
-  guard would for as long as the job lasts, and come out of it exposed,
-  with the game's own marker over them, for you to deal with.
+- A crooked guard who comes to search in the room is caught. They search as
+  an honest guard would for as long as the job lasts, and come out of it
+  exposed, with the game's own marker over them, for you to deal with.
 
-Without a scanner the machine still works and says so in its tooltip:
-searches in that room can miss.
+The second is the game's own and stays. The only call that could meet a
+guard's needs from a script belongs to the campaign, and outside the
+campaign it crashes the game, so the mod does not touch it. Keep your guards'
+needs met and no search in the room misses.
+
+Without a scanner the machine still works and says so in its tooltip: a
+bribed guard's search in that room can miss.
 
 ## What it cannot do
 
 These are the game's own rules, and no room changes them:
 
+- A guard whose needs are neglected skips the confiscation half the time.
 - Contraband thrown over a wall, or dug under one, never goes through the
   room.
 - The game will not search the same person twice inside thirty seconds.
@@ -85,17 +89,16 @@ room: it reads the room its own tile is zoned into.
 ## Files
 
 - `data/scripts/MedicalProbeMachine.lua` is the machine, written by hand.
-- `data/world.lua` asks the game for the searches and for the searching
-  guards' needs to be met. The game gives its work queue to a mod's world
-  script and to no object's own script, so the machine marks who is to be
-  searched and which guards are at work, and this file does the asking.
+- `data/world.lua` asks the game for the searches. The game gives its work
+  queue to a mod's world script and to no object's own script, so the
+  machine marks who is to be searched and this file does the asking.
 - `tools/gen_assets.py` writes everything else the mod ships: the sprites,
   `materials.txt`, the language file and the thumbnail.
 - `tools/simulate.py` runs both scripts against a mock of the game (needs
   the `lupa` package), each in its own Lua state with only what the game
   gives that kind of script. People walk a corridor with the room zoned
-  across it, in both directions, and never stop trying to walk on. Every
-  guard starts fed up and one searching guard is crooked and bribed. It
+  across it, in both directions, and never stop trying to walk on. One
+  searching guard is crooked and bribed. It
   checks, over every seed, that nobody and no crate gets more than a step
   out of the room unsearched, that nothing leaves still carrying
   contraband, that the crooked guard ends exposed, that everyone gets through in the end, that
