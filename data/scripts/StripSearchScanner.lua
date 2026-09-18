@@ -117,15 +117,12 @@ local FRAME_SCAN_B = 2
 local FRAME_CLEAR = 3
 local PULSE_INTERVAL = 0.4
 local MAX_ROOM_TILES = 256
--- A lobby can be wider than its doors. It is mapped from the tiles between
--- its two doors out sideways as far as the walls, and a lobby with no wall
--- within this many tiles of its doors is left at the tiles between them.
-local LOBBY_SPREAD = 8
--- Every wall, fence and stretch of water in the game and its expansions has
--- one of these words in its material's name, and what is left of a wall that
--- has fallen down is the only thing so named that can be walked through.
-local WALL_WORDS = { "Wall", "Fence", "Building", "Water", "Cliff" }
-local FALLEN = "Collapsed"
+-- A guard or a workman is no business of this room's. With nobody in reach
+-- who could carry anything, and with the room not yet finished, every door
+-- stands open; the moment a prisoner or a crate comes within reach they all
+-- shut and the airlock takes over. A door the player has locked open is left
+-- alone altogether.
+local MODE_LOCKED_OPEN = 2
 local DEBUG = false
 
 local DOOR_TYPES = { In = "StripSearchDoorIn", Out = "StripSearchDoorOut" }
@@ -162,6 +159,8 @@ local clock = 0
 -- The room: its tiles keyed "x,y" to "chamber" or the side whose lobby they
 -- are, and how far it reaches from the scanner.
 local roomTiles = {}
+local finished = false
+local idle = false
 local roomReach = 3
 -- The doors by side: outer is the door to the outside, inner the door
 -- between the lobby and the room, nil when the side has one door. Each door
@@ -275,39 +274,11 @@ local function cellRoom(cell)
     return number(cell["Room.i"], -1)
 end
 
-local function isWall(cell)
-    local mat = cell ~= nil and cell.Mat or nil
-    if type(mat) ~= "string" or string.find(mat, FALLEN, 1, true) then
-        return false
-    end
-    for _, word in ipairs(WALL_WORDS) do
-        if string.find(mat, word, 1, true) then
-            return true
-        end
-    end
-    return false
-end
-
--- The way out of the room through a door, as a step of one tile. A door
--- faces along the way through it; which of the two ways is out is the one
--- that leads away from the scanner. A door that does not say how it faces
--- is taken to lead straight away from the scanner.
+-- The way out of the room through a door, as a step of one tile: straight
+-- away from the scanner, along whichever line the door is further down.
 local function wayOut(door, sx, sy)
     local dx, dy = door.tx + 0.5 - sx, door.ty + 0.5 - sy
-    local alongX = math.abs(dx) > math.abs(dy)
-    local facing = door.obj.Or
-    if type(facing) == "table" then
-        local fx, fy = math.abs(number(facing.x, 0)), math.abs(number(facing.y, 0))
-        if fx ~= fy then
-            local facesX = fx > fy
-            -- a door level with the scanner on its own line leads nowhere
-            -- along it, so the line from the scanner decides instead
-            if (facesX and math.abs(dx) >= 0.5) or (not facesX and math.abs(dy) >= 0.5) then
-                alongX = facesX
-            end
-        end
-    end
-    if alongX then
+    if math.abs(dx) > math.abs(dy) then
         return dx < 0 and -1 or 1, 0
     end
     return 0, dy < 0 and -1 or 1
@@ -377,9 +348,7 @@ end
 -- The chamber is every tile zoned like the scanner's own, reached without
 -- crossing a door; an unzoned scanner falls back to the block of tiles
 -- between its inner doors. A side's lobby is the tiles between its two
--- doors, and from those sideways to its walls: every tile that lies between
--- the two doors' own rows, is zoned like the tiles between the doors, and
--- is reached from them without crossing a wall.
+-- doors, and across the width of the room between those doors' own rows.
 local function mapRoom()
     local sx, sy = position(this)
     local ox, oy = math.floor(sx), math.floor(sy)
@@ -428,46 +397,27 @@ local function mapRoom()
     if count == 0 then
         add(ox, oy, "chamber")
     end
+    -- A lobby is as wide as the room: every tile between its two doors' own
+    -- rows, across the room's width.
     local function widen(s)
         local inner, outer = doors[s].inner, doors[s].outer
         local ax, ay = outer.ax, outer.ay
         local depth = (outer.tx - inner.tx) * ax + (outer.ty - inner.ty) * ay
-        if depth < 2 then
-            return
-        end
-        local home = cellRoom(World.GetCell(inner.tx + ax, inner.ty + ay))
-        local queue, found = {}, {}
+        local lo, hi = 0, 0
         for key, what in pairs(tiles) do
-            if what == s then
+            if what == "chamber" then
                 local x, y = string.match(key, "^(-?%d+),(-?%d+)$")
-                queue[#queue + 1] = { tonumber(x), tonumber(y) }
+                local across = (tonumber(x) - inner.tx) * -ay + (tonumber(y) - inner.ty) * ax
+                lo, hi = math.min(lo, across), math.max(hi, across)
             end
         end
-        local head = 1
-        while head <= #queue do
-            local x, y = queue[head][1], queue[head][2]
-            head = head + 1
-            for _, step in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-                local nx, ny = x + step[1], y + step[2]
-                local key = tileKey(nx, ny)
-                local along = (nx - inner.tx) * ax + (ny - inner.ty) * ay
-                if tiles[key] == nil and found[key] == nil and along >= 1 and along <= depth - 1
-                    and doorwayAt(nx, ny) == nil then
-                    local cell = World.GetCell(nx, ny)
-                    if not isWall(cell) and cellRoom(cell) == home then
-                        local across = math.abs((nx - inner.tx) * ay - (ny - inner.ty) * ax)
-                        if across > LOBBY_SPREAD then
-                            -- no wall this side: not a lobby to be mapped
-                            return
-                        end
-                        found[key] = true
-                        queue[#queue + 1] = { nx, ny }
-                    end
+        for along = 1, depth - 1 do
+            for across = lo, hi do
+                local x, y = inner.tx + along * ax + across * -ay, inner.ty + along * ay + across * ax
+                if doorwayAt(x, y) == nil then
+                    add(x, y, s)
                 end
             end
-        end
-        for _, tile in ipairs(queue) do
-            add(tile[1], tile[2], s)
         end
     end
     for _, s in ipairs(SIDES) do
@@ -477,6 +427,7 @@ local function mapRoom()
         end
     end
     roomTiles, roomReach = tiles, reach
+    finished = home >= 0 and doors.In.outer ~= nil and doors.Out.outer ~= nil
 end
 
 local function relayout()
@@ -564,12 +515,16 @@ local function pinDoors()
     eachDoor(function(_, _, door)
         -- A door to be held open is a plain door first: the game keeps a
         -- locked door shut whatever is written to its openness.
+        door.open = number(Get(door.obj, "Open"), 0)
+        if number(Get(door.obj, "Mode"), MODE_NORMAL) == MODE_LOCKED_OPEN then
+            door.locked = nil
+            return
+        end
         local lock = door.lock and not door.want
         if lock ~= door.locked then
             Set(door.obj, "Mode", lock and MODE_LOCKED_SHUT or MODE_NORMAL)
             door.locked = lock
         end
-        door.open = number(Get(door.obj, "Open"), 0)
         if door.want then
             if door.open < 1 then
                 Set(door.obj, "Open", 1)
@@ -793,6 +748,7 @@ local function scanPeople()
     local range = roomReach + DOOR_WAIT + 2
     local outside = {}
     scan.guards = {}
+    scan.targets = 0
     scan.waiting.In, scan.waiting.Out = 0, 0
     scan.doorway.In, scan.doorway.Out = 0, 0
     for _, kind in ipairs(MOVERS) do
@@ -800,6 +756,9 @@ local function scanPeople()
             local x, y = position(obj)
             local id = objectId(obj)
             if x ~= nil and id ~= nil and not isDead(obj) then
+                if isTarget(kind, obj) then
+                    scan.targets = scan.targets + 1
+                end
                 local place = insideAt(x, y)
                 local doorway = place == nil and doorwayAt(x, y) or nil
                 if place == nil and doorway == nil and occupants[id] ~= nil then
@@ -832,6 +791,7 @@ local function scanPeople()
             local x, y = position(obj)
             local id = objectId(obj)
             if x ~= nil and id ~= nil then
+                scan.targets = scan.targets + 1
                 local carrier = occupants[number(Get(obj, "CarrierId.i"), -1)]
                 local place = insideAt(x, y)
                 if place == nil and crates[id] ~= nil and doorwayAt(x, y) == nil then
@@ -1295,8 +1255,26 @@ function Update(timePassed)
     if scanTimer >= SCAN_INTERVAL then
         scanTimer = 0
         scanPeople()
-        watchSearches(mode == "sealed" or mode == "admit")
-        step(census())
+        local c = census()
+        if not finished or (scan.targets == 0 and c.unsearched == 0) then
+            if not idle then
+                idle = true
+                closing = nil
+                unlockDoors()
+                log("standing open")
+            end
+            eachDoor(function(_, _, door)
+                door.want = true
+            end)
+        else
+            if idle then
+                idle = false
+                reset()
+                shutThen("intake", "In")
+            end
+            watchSearches(mode == "sealed" or mode == "admit")
+            step(c)
+        end
         local text = tooltip()
         if text ~= lastTooltip then
             lastTooltip = text

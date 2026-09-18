@@ -10,10 +10,6 @@ person, stand against them for the game's ten seconds (five for a crate)
 and only then clear them. There are escorts, crates in a workman's arms, and
 traffic in both directions.
 
-Every scenario runs twice over: once with walls the scanner can tell are
-walls, and once with walls it cannot, which leaves it to keep track of
-people in a lobby it could not map.
-
 It checks, over every seed and room size, that nothing crosses the room
 without a finished search, that both doors are never open together, and
 that everybody gets through in the end. It prints how long the crossing
@@ -34,9 +30,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "data", "scripts", "StripSearchScanner.lua")
 WORLD_SCRIPT = os.path.join(ROOT, "data", "world.lua")
 PREFABS = os.path.join(ROOT, "data", "prefabs.txt")
-# What the map's walls are made of: the wall a quick build gets by default,
-# and one whose name tells the scanner nothing.
-WALLS = ("ConcreteWall", "Plasteel")
+# What the map's walls are made of.
+WALLS = ("ConcreteWall",)
 SEEDS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
 DT = 1.0 / 30
 HORIZON = 60 * 30            # simulated seconds per run
@@ -380,7 +375,10 @@ class World:
         # door together with the far side's inner door
         o_in, i_in = self.door_open(self.door_in), self.door_open(self.door_in_inner)
         o_out, i_out = self.door_open(self.door_out), self.door_open(self.door_out_inner)
-        if (o_in and o_out) or (o_in and i_out) or (o_out and i_in):
+        # which matters only while someone or something to be searched is in
+        # the airlock; with nobody of the kind in reach the doors stand open
+        searchable = [m for m in self.movers if m.alive and (m.kind == "Prisoner" or m.props.get("Corrupted"))] + self.crates
+        if ((o_in and o_out) or (o_in and i_out) or (o_out and i_in)) and any(self.in_airlock(t.y) for t in searchable):
             self.both_open_ticks += 1
 
     def move(self, m):
