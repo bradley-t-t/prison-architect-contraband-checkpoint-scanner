@@ -37,7 +37,10 @@ every tile zoned together with the machine's.
 4. Until that search is done they do not leave. There is no door to hold
    shut, so the machine holds the person: anyone unsearched who steps out
    of the room is put back where they last stood inside it.
-5. Once searched they walk on. Coming back in later is a new visit and a
+5. Nobody is kept for ever. Anyone still waiting ninety seconds after they
+   came in is let go, whatever went wrong: no guard free, a job the game
+   dropped, a search the machine never saw finish.
+6. Once searched they walk on. Coming back in later is a new visit and a
    new search.
 
 Other staff, visitors and dogs walk through freely. The game's search does
@@ -69,6 +72,11 @@ needs met and no search in the room misses.
 Without a scanner the machine still works and says so in its tooltip: a
 bribed guard's search in that room can miss.
 
+A guard holds whatever he is searching for as long as the search lasts, and
+the machine knows that from carrying: a guard with a job who is going
+nowhere else is searching, and one bound elsewhere is an escort. Stacks
+stored on a cooker, a shelf or a truck are furniture and are never searched.
+
 ## What it cannot do
 
 These are the game's own rules, and no room changes them:
@@ -77,7 +85,7 @@ These are the game's own rules, and no room changes them:
 - Contraband thrown over a wall, or dug under one, never goes through the
   room.
 - The game will not search the same person twice inside thirty seconds.
-  Someone who walks straight back in waits that out.
+  Someone the machine saw searched that recently walks straight through.
 - With no guard free, people wait. Keep guards near the room.
 
 ## Why the room needs the machine

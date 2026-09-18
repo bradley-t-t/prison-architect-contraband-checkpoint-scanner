@@ -1,4 +1,4 @@
 Name                 "Strip Search"
 Author               Trenton
 Description          "A Strip Search room, the Medical Probe Machine that runs it and the Room Scanner that catches crooked guards. Every prisoner who steps into the room is probed, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too. Nobody unsearched leaves the room. The scanner makes a crooked guard search honestly and exposes them. It needs no doors of its own."
-Version              2.4
+Version              2.5

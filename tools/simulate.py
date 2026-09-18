@@ -18,7 +18,8 @@ Each script runs in its own Lua state with only what the game gives that
 kind of script. It checks, over every seed, that nobody and no crate gets
 more than a step out of the room before their search is done, that nothing
 leaves the room still carrying contraband, that everyone
-reaches the far end in the end, that every prisoner is hurt once a visit and
+reaches the far end in the end, that with no guards at all the timeout still
+gets everyone through, that every prisoner is hurt once a visit and
 no more, and that everybody has their own name back afterwards.
 
 Usage: python simulate.py [seeds]   (needs the lupa package)
@@ -69,6 +70,7 @@ class Thing:
         self.dest = None
         self.last_searched = -1e9
         self.searches = 0
+        self.stored = False
         self.goal = None
         self.carrying = None
         self.entered = False
@@ -84,6 +86,7 @@ class Job:
         Job._next += 1
         self.target = target
         self.guard = None
+        self.holding = False
         self.work = 0.0
         self.done = False
 
@@ -101,6 +104,7 @@ class World:
         self.missed = 0
         self.movers, self.crates, self.jobs, self.log = [], [], [], []
         self.requests = 0
+        self.broken = 0
         self.set_down = 0
         self.failures = []
         for i in range(6):
@@ -114,11 +118,18 @@ class World:
         escort = self.walker("Guard", up=True)
         inmate = Thing("Prisoner", escort.x, escort.y)
         inmate.props["Name"] = inmate.own = "Escorted"
-        inmate.props["CarrierId.i"] = escort.id
+        inmate.props["CarrierId.i"], inmate.props["Carried"] = escort.id, 5
         escort.carrying = escort.charge = inmate
+        escort.job = Job(None)        # an escort is a guard on a job, bound elsewhere
+        escort.dest = (escort.x, LENGTH - 1.5)
         self.movers.append(inmate)
         floor = Thing("Stack", 1.5, ROOM[0] + 2.5)
         self.crates.append(floor)
+        # ingredients on a cooker in the room: furniture, never to be searched
+        shelf = Thing("Stack", 2.5, ROOM[0] + 1.5)
+        shelf.props["CarrierId.i"] = 9999
+        shelf.stored = True
+        self.crates.append(shelf)
         self.guards = []
         for i in range(3):
             g = Thing("Guard", 0.5 + i, 4.5)
@@ -139,7 +150,7 @@ class World:
             m.own = name
         if crate:
             c = Thing("Box", m.x, m.y)
-            c.props["CarrierId.i"] = m.id
+            c.props["CarrierId.i"], c.props["Carried"] = m.id, 5
             m.carrying = c
             self.crates.append(c)
         self.movers.append(m)
@@ -224,6 +235,11 @@ class World:
                     if m.carrying is o:
                         m.carrying = None
                         world.set_down += 1
+                for j in world.jobs:
+                    if j.target is o and not j.done and j.holding:
+                        # torn out of the hands of the guard searching it
+                        j.work, j.holding = 0.0, False
+                        world.broken += 1
             if key == "Pos.x":
                 o.x = float(value)
             elif key == "Pos.y":
@@ -245,8 +261,8 @@ class World:
                 return
             if world.t - o.last_searched < SEARCH_COOLDOWN:
                 return
-            if o.props.get("CarrierId.i", -1) not in (-1, None) and o.props.get("CarrierId.i", -1) >= 0:
-                return      # the game will not search a crate in someone's arms
+            if o.stored:
+                world.failures.append("%.1f a search was asked for a stack stored on a shelf" % world.t)
             world.jobs.append(Job(o))
 
         def get_cell(x, y):
@@ -292,11 +308,20 @@ class World:
                 g.dest = (o.x, o.y)
                 if math.hypot(g.x - o.x, g.y - o.y) > REACH:
                     self.step_towards(g, o.x, o.y, WALK * 1.5)
+                elif o.props.get("CarrierId.i", -1) not in (-1, None, g.id):
+                    pass        # in someone else's arms: the game's search fails
                 else:
+                    # a guard holds whatever he searches for as long as it takes
+                    if not j.holding:
+                        j.holding = True
+                        o.props["CarrierId.i"], o.props["Carried"] = g.id, 4
+                        g.props["Carrying.i"] = o.id
                     j.work += DT
                     kind = "crate" if o.kind in ("Box", "Stack") else "entity"
                     if j.work >= SEARCH_WORK[kind]:
-                        j.done = True
+                        j.done, j.holding = True, False
+                        o.props["CarrierId.i"], o.props["Carried"] = -1, 0
+                        g.props["Carrying.i"] = -1
                         o.last_searched = self.t
                         miss = g.props.get("Corrupted") is True or g.fed_up
                         if miss:
@@ -322,15 +347,20 @@ class World:
                 # the escort waits by a prisoner it was made to let go of,
                 # and takes them on again once they have been searched
                 held = True
-                if charge.searches > 0 and self.t - charge.last_searched > 2 and not any(j.target is charge and not j.done for j in self.jobs):
+                m.let_go_at = getattr(m, "let_go_at", self.t)
+                done = charge.searches > 0 and self.t - charge.last_searched > 2
+                waited = self.t - m.let_go_at > 100
+                if waited or (done and not any(j.target is charge and not j.done for j in self.jobs)):
                     m.carrying = charge
-                    charge.props["CarrierId.i"] = m.id
+                    charge.props["CarrierId.i"], charge.props["Carried"] = m.id, 5
                     m.x, m.y = charge.x, charge.y
             if m.carrying is not None:
                 m.carrying.x, m.carrying.y = m.x, m.y
         self.check()
 
     def target(self, o):
+        if o.stored:
+            return False
         return o.kind in ("Prisoner", "Box", "Stack") or o.props.get("Corrupted") is True
 
     def check(self):
@@ -347,6 +377,11 @@ class World:
                 o.entered = True
                 o.searches_at_entry = o.searches
                 o.contraband = self.target(o)
+                if self.t - o.last_searched < SEARCH_COOLDOWN:
+                    # searched moments ago: the game would refuse another, so
+                    # walking straight through is right
+                    o.searches_at_entry = o.searches - 1
+                    o.contraband = False
             o.was_inside = inside
             if not o.entered or inside or not self.target(o):
                 continue
@@ -360,9 +395,14 @@ class World:
                 o.entered = False
 
 
-def run(seed):
+def run(seed, guards=True):
     Thing._next, Job._next = 100, 1
     world = World(seed)
+    if not guards:
+        # nobody to search anyone: only the timeout gets people through
+        for g in world.guards:
+            world.movers.remove(g)
+        world.guards = []
     obj, wld = LuaRuntime(unpack_returned_tuples=True), LuaRuntime(unpack_returned_tuples=True)
     world.bind(obj, "object")
     world.bind(wld, "world")
@@ -376,6 +416,9 @@ def run(seed):
         update(DT)
         world_update(str(DT))
     failures = world.failures
+    if not guards:
+        return [("%s %d never arrived without guards (y %.1f)" % (m.kind, m.id, m.y))
+                for m in world.movers if m.goal is not None and abs(m.y - m.goal) > 0.1], 0, world.requests
     for m in world.movers:
         if m.goal is not None and abs(m.y - m.goal) > 0.1:
             failures.append("%s %d never arrived (y %.1f)" % (m.kind, m.id, m.y))
@@ -394,6 +437,8 @@ def run(seed):
     if bent.props.get("Corrupted") is not True or bent.props.get("Exposed") is not True:
         failures.append("the crooked guard ended corrupted=%r exposed=%r" % (
             bent.props.get("Corrupted"), bent.props.get("Exposed")))
+    if world.broken:
+        failures.append("%d searches broken by taking the person out of the guard's hands" % world.broken)
     if world.set_down != 3:
         failures.append("%d things set down, not 3" % world.set_down)
     if world.machine.props.get("Name"):
@@ -404,6 +449,11 @@ def run(seed):
 
 def main():
     total = 0
+    stuck, _, _ = run(0, guards=False)
+    total += len(stuck)
+    print("no guards  failures %d" % len(stuck))
+    for f in stuck[:6]:
+        print("    " + f)
     for seed in range(SEEDS):
         failures, searched, requests = run(seed)
         total += len(failures)

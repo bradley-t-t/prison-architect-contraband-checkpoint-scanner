@@ -19,6 +19,9 @@
 -- an unsearched crate into the room, or escorts an unsearched prisoner into
 -- it, is made to let go, and the search happens in the room.
 --
+-- Nobody is kept for ever. Anyone still waiting HOLD_TIMEOUT seconds after
+-- they came in is let go, whatever went wrong.
+--
 -- Until their search is done nobody leaves. There is no door to hold shut,
 -- so the machine holds the person instead: anyone unsearched found outside
 -- the room is put back where they last stood inside it, and so is anyone
@@ -58,6 +61,15 @@ local SEARCH_SLACK = 1
 local SEEN_GRACE = 1.5
 -- A search asked for and not seen to start is asked for again after this.
 local RETRY_AFTER = 40
+-- Nobody is kept longer than this, whatever has gone wrong: a search the
+-- machine never saw finish, a job the game dropped, no guard ever free.
+local HOLD_TIMEOUT = 90
+-- The game will not search the same person twice inside this long, so
+-- someone the machine saw searched this recently is not kept again.
+local SEARCH_COOLDOWN = 30
+-- Looking for a carrier who is not a guard means searching the map for
+-- every kind of person. It is done this often at most.
+local CARRIER_SEARCH_EVERY = 2
 -- What the probe costs a prisoner, of a whole life of 1, and the most
 -- injured it will leave anyone.
 local PROBE_INJURY = 0.05
@@ -120,6 +132,9 @@ local guardJobs = {}
 local guards = {}
 local lastProgress = 0
 local lastRequest = 0
+local lastCarrierSearch = -CARRIER_SEARCH_EVERY
+-- When each person was last seen searched, keyed by id.
+local searchedAt = {}
 
 local function log(text)
     if DEBUG then
@@ -330,8 +345,13 @@ end
 local function note(id, obj, kind, x, y)
     local record = records[id]
     if record == nil then
-        record = { id = id, obj = obj, kind = kind, target = isTarget(kind, obj), searched = false }
+        record = { id = id, obj = obj, kind = kind, target = isTarget(kind, obj), searched = false,
+                   since = clock }
         records[id] = record
+        if searchedAt[id] ~= nil and clock - searchedAt[id] < SEARCH_COOLDOWN then
+            -- searched moments ago, and the game would refuse another
+            record.searched = true
+        end
         if isMark(nameOf(obj)) then
             -- marked before a save: carry on from there, already probed
             record.marked = clock
@@ -346,112 +366,6 @@ local function note(id, obj, kind, x, y)
     record.seen = clock
     return record
 end
-
--- Whoever is carrying something, as an object the script can write to. A
--- guard is known from this look already. Anyone else means searching the
--- map for every kind of person there is, the dearest thing this script ever
--- does, so it is done once in a look at most and only in a look that has
--- something in someone's arms to put down.
-local function carrierOf(carrierId, range, everyone)
-    for _, guard in ipairs(guards) do
-        if guard.id == carrierId then
-            return guard, everyone
-        end
-    end
-    local record = records[carrierId]
-    if record ~= nil then
-        return record, everyone
-    end
-    if everyone == nil then
-        everyone = {}
-        for _, kind in ipairs(MOVERS) do
-            if not WATCHED[kind] then
-                for obj, _ in pairs(Find(kind, range) or {}) do
-                    local id = objectId(obj)
-                    if id ~= nil then
-                        everyone[id] = { obj = obj, id = id, kind = kind }
-                    end
-                end
-            end
-        end
-    end
-    return everyone[carrierId], everyone
-end
-
--- Everyone who matters within reach of the room: prisoners, the guards who
--- search, and crates. Nobody else is ever searched or held, so nobody else
--- is looked for. Someone inside is recorded, and their place inside
--- remembered. Someone outside is looked at only if already kept. The dead
--- are ignored. Returns the ids of everyone recorded who is now outside, and
--- whether anyone at all was in reach.
-local function scanPeople()
-    local range = roomReach + MARGIN
-    guards = {}
-    local outside, anyone = {}, false
-    for _, kind in ipairs(WATCHED_KINDS) do
-        local crate = isCrateKind(kind)
-        for obj, _ in pairs(Find(kind, range) or {}) do
-            anyone = true
-            local x, y = position(obj)
-            local id = objectId(obj)
-            if x ~= nil and id ~= nil then
-                local known = records[id] ~= nil
-                local within = inside(x, y)
-                if SEARCHERS[kind] then
-                    guards[#guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
-                end
-                if (within or known) and (crate or not isDead(obj)) then
-                    local record = note(id, obj, kind, x, y)
-                    if within then
-                        record.inX, record.inY = x, y
-                    else
-                        outside[id] = true
-                    end
-                end
-            end
-        end
-    end
-    -- Nothing in anyone's arms can be searched, and that goes for a
-    -- prisoner under escort as much as for a crate: the game's search job
-    -- fails for as long as they are carried. Whoever carries someone or
-    -- something still to be searched lets go of it in the room.
-    local everyone = nil
-    for id, record in pairs(records) do
-        if held(record) and not outside[id] and record.inX ~= nil then
-            local carrierId = number(Get(record.obj, "CarrierId.i"), -1)
-            if carrierId >= 0 then
-                local carrier
-                carrier, everyone = carrierOf(carrierId, range, everyone)
-                if carrier ~= nil then
-                    setDown(record, carrier)
-                end
-            end
-        end
-    end
-    return outside, anyone
-end
-
--- Settles everyone the last look saw outside, once the searches that look
--- could see finished have been counted. Anyone still to be searched is put
--- back. Anyone else has left, and is forgotten.
-local function enforce(outside)
-    for id, record in pairs(records) do
-        if clock - record.seen > SEEN_GRACE then
-            unmark(record)
-            records[id] = nil
-        elseif outside[id] then
-            if held(record) then
-                putBack(record)
-            else
-                unmark(record)
-                records[id] = nil
-                log(record.kind .. " " .. tostring(id) .. " gone")
-            end
-        end
-    end
-end
-
--- -------------------------------------------------------------- searches
 
 -- Where a guard is going, or nil when nowhere is set.
 local function destination(guard)
@@ -485,6 +399,139 @@ local function searching(guard, record)
     end
     return distance(guard.x, guard.y, record.x, record.y)
 end
+
+-- Whoever is carrying something, as an object the script can write to. A
+-- guard is known from this look already. Anyone else means searching the
+-- map for every kind of person there is, the dearest thing this script ever
+-- does, so it is done once in a look at most and only in a look that has
+-- something in someone's arms to put down.
+local function carrierOf(carrierId, range, everyone)
+    for _, guard in ipairs(guards) do
+        if guard.id == carrierId then
+            return guard, everyone
+        end
+    end
+    local record = records[carrierId]
+    if record ~= nil then
+        return record, everyone
+    end
+    if everyone == nil then
+        everyone = {}
+        if clock - lastCarrierSearch < CARRIER_SEARCH_EVERY then
+            return nil, everyone
+        end
+        lastCarrierSearch = clock
+        for _, kind in ipairs(MOVERS) do
+            if not WATCHED[kind] then
+                for obj, _ in pairs(Find(kind, range) or {}) do
+                    local id = objectId(obj)
+                    if id ~= nil then
+                        everyone[id] = { obj = obj, id = id, kind = kind }
+                    end
+                end
+            end
+        end
+    end
+    return everyone[carrierId], everyone
+end
+
+-- Everyone who matters within reach of the room: prisoners, the guards who
+-- search, and crates. Nobody else is ever searched or held, so nobody else
+-- is looked for. Someone inside is recorded, and their place inside
+-- remembered. Someone outside is looked at only if already kept. The dead
+-- are ignored. Returns the ids of everyone recorded who is now outside, and
+-- whether anyone at all was in reach.
+local function scanPeople()
+    local range = roomReach + MARGIN
+    guards = {}
+    local outside, anyone = {}, false
+    for _, kind in ipairs(WATCHED_KINDS) do
+        local crate = isCrateKind(kind)
+        for obj, _ in pairs(Find(kind, range) or {}) do
+            anyone = true
+            local x, y = position(obj)
+            local id = objectId(obj)
+            if x ~= nil and id ~= nil then
+                local known = records[id] ~= nil
+                local within = inside(x, y)
+                if crate and number(Get(obj, "CarrierId.i"), -1) >= 0
+                    and number(Get(obj, "Carried"), 0) <= 0 then
+                    -- stored on a shelf, a cooker or a truck rather than in
+                    -- anyone's arms: part of the furniture, not a delivery
+                    within, known = false, false
+                end
+                if SEARCHERS[kind] then
+                    guards[#guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
+                end
+                if (within or known) and (crate or not isDead(obj)) then
+                    local record = note(id, obj, kind, x, y)
+                    if within then
+                        record.inX, record.inY = x, y
+                    else
+                        outside[id] = true
+                    end
+                end
+            end
+        end
+    end
+    -- Nothing in anyone's arms can be searched, and that goes for a
+    -- prisoner under escort as much as for a crate: the game's search job
+    -- fails for as long as they are carried. Whoever carries someone or
+    -- something still to be searched lets go of it in the room.
+    local everyone = nil
+    for id, record in pairs(records) do
+        if held(record) and not outside[id] and record.inX ~= nil then
+            local carrierId = number(Get(record.obj, "CarrierId.i"), -1)
+            if carrierId >= 0 and number(Get(record.obj, "Carried"), 0) > 0 then
+                local carrier
+                carrier, everyone = carrierOf(carrierId, range, everyone)
+                -- A guard searching someone holds them while he does it,
+                -- and that is not carrying: letting go there would break
+                -- the very search being waited for. A guard with a job who
+                -- is going nowhere else is searching; one bound elsewhere
+                -- is an escort.
+                local busy = false
+                if carrier ~= nil and SEARCHERS[carrier.kind]
+                    and number(Get(carrier.obj, "JobId"), -1) >= 0 then
+                    carrier.x, carrier.y = position(carrier.obj)
+                    carrier.dx, carrier.dy = destination(carrier)
+                    busy = carrier.x ~= nil and searching(carrier, record) ~= nil
+                end
+                if carrier ~= nil and not busy then
+                    setDown(record, carrier)
+                end
+            end
+        end
+    end
+    return outside, anyone
+end
+
+-- Settles everyone the last look saw outside, once the searches that look
+-- could see finished have been counted. Anyone still to be searched is put
+-- back. Anyone else has left, and is forgotten.
+local function enforce(outside)
+    for id, record in pairs(records) do
+        if held(record) and clock - record.since > HOLD_TIMEOUT then
+            record.searched = true
+            unmark(record)
+            log(record.kind .. " " .. tostring(id) .. " let go after " .. HOLD_TIMEOUT .. " seconds")
+        end
+        if clock - record.seen > SEEN_GRACE then
+            unmark(record)
+            records[id] = nil
+        elseif outside[id] then
+            if held(record) then
+                putBack(record)
+            else
+                unmark(record)
+                records[id] = nil
+                log(record.kind .. " " .. tostring(id) .. " gone")
+            end
+        end
+    end
+end
+
+-- -------------------------------------------------------------- searches
 
 local function unsearched()
     local list = {}
@@ -527,6 +574,7 @@ local function creditSearch(track, pending)
     end
     if best ~= nil then
         best.searched = true
+        searchedAt[best.id] = clock
         unmark(best)
         table.remove(pending, bestAt)
         log(best.kind .. " " .. tostring(best.id) .. " searched")
@@ -587,9 +635,11 @@ local function watchSearches(elapsed)
             -- the time counts for everyone the guard could be searching
             guard.dx, guard.dy = destination(guard)
             local working = false
+            -- a guard holds whoever he is searching, which names them
+            local holding = number(Get(guard.obj, "Carrying.i"), -1)
             for _, record in ipairs(pending) do
                 local d = searching(guard, record)
-                if d ~= nil then
+                if d ~= nil and (holding < 0 or holding == record.id) then
                     local spent = elapsed * (SEARCH_RATE[guard.kind] or 1)
                     track.work[record.id] = (track.work[record.id] or 0) + spent
                     track.dist[record.id] = (track.dist[record.id] or 0) + d * spent
