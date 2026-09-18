@@ -1,8 +1,8 @@
 """Builds every generated file the Strip Search mod ships.
 
 Outputs, relative to the mod root (the parent of this tools/ folder):
-  data/sprites.png                  the Medical Probe Machine's two frames
-  data/materials.txt                the machine and the room
+  data/sprites.png                  the Medical Probe Machine's two frames and the Room Scanner
+  data/materials.txt                the machine, the scanner and the room
   data/language/base-language.txt   names, build-menu text and tooltips
   thumbnail.png                     the mod's card image in the game's mod list
 
@@ -40,6 +40,9 @@ LAMPS = [
 ]
 SHEET_CELLS = (8, 2)
 PRICE = 500
+SCANNER_PRICE = 800
+SCANNER_CELL = 4             # where the Room Scanner sits on the sheet, in cells
+LENS = dict(core=(72, 165, 255), hot=(205, 235, 255), dim=(22, 78, 190))
 
 
 def overlay(w=TILE, h=TILE):
@@ -84,17 +87,39 @@ def machine_sprite(frame):
     return im
 
 
+def scanner_sprite():
+    """The Room Scanner seen from above: a round sensor head on a dark floor
+    plate, with a blue lens and four short feet."""
+    im = overlay()
+    d = ImageDraw.Draw(im)
+    d.ellipse([10, 13, 58, 61], fill=SHADOW)
+    for x, y in ((8, 8), (48, 8), (8, 48), (48, 48)):
+        d.rectangle([x, y, x + 7, y + 7], fill=STEEL_LO + (255,))
+    d.ellipse([6, 6, 57, 57], fill=DARK + (255,))
+    d.ellipse([6, 6, 57, 57], outline=DARK_HI + (255,))
+    d.ellipse([13, 13, 50, 50], fill=STEEL + (255,))
+    d.arc([13, 13, 50, 50], 180, 300, fill=STEEL_HI + (255,))
+    d.arc([13, 13, 50, 50], 0, 120, fill=STEEL_LO + (255,))
+    d.ellipse([20, 20, 43, 43], fill=LENS["dim"] + (255,))
+    d.ellipse([24, 24, 39, 39], fill=LENS["core"] + (255,))
+    d.ellipse([27, 26, 33, 31], fill=LENS["hot"] + (255,))
+    return im
+
+
 def build_sprites():
     sheet = Image.new("RGBA", (SHEET_CELLS[0] * CELL, SHEET_CELLS[1] * CELL), (0, 0, 0, 0))
     for f in range(FRAMES):
         sheet.paste(machine_sprite(f), (f * TILE, 0))
+    sheet.paste(scanner_sprite(), (SCANNER_CELL * CELL, 0))
     return sheet
 
 
 def build_thumbnail():
     im = Image.new("RGBA", (256, 256), (16, 18, 21, 255))
-    big = machine_sprite(1).resize((224, 224), Image.NEAREST)
-    im.paste(big, (16, 16), big)
+    big = machine_sprite(1).resize((192, 192), Image.NEAREST)
+    im.paste(big, (8, 8), big)
+    small = scanner_sprite().resize((96, 96), Image.NEAREST)
+    im.paste(small, (152, 152), small)
     return im
 
 
@@ -120,10 +145,29 @@ def materials_text():
     BEGIN ToolbarSprite  x 0  y 0  w 2  h 2  END
 {sprites}END
 
+BEGIN Object
+    Name                 RoomScanner
+    ConstructionTime     10.0000
+    Toughness            200.000
+    Price                -{SCANNER_PRICE}
+    Filter               Security
+    RenderDepth          1
+    Group                StaticObject
+    BlockedBy            Wall
+    BlockedBy            UtilityStation
+    BlockedBy            StaticObject
+    MadeOf               SolidMetal
+    Properties           StaticObject
+    NumSprites           1
+    BEGIN ToolbarSprite  x {SCANNER_CELL}  y 0  w 2  h 2  END
+    BEGIN Sprite         x {SCANNER_CELL}  y 0  w 2  h 2  RotateType 0  TopAligned false  END
+END
+
 BEGIN Room
     Name                 StripSearch
     BEGIN Requirement Type MinimumSize  x 2  y 2  END
     BEGIN Requirement Type Object  Id MedicalProbeMachine  END
+    BEGIN Requirement Type Object  Id RoomScanner  END
 END
 """
 
@@ -133,15 +177,22 @@ def language_text():
                "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
                "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
                "leaves the room.")
+    scanner = ("Stands on the floor of a Strip Search room and makes every search there certain. A guard "
+               "searching in the room has their needs met while they work, so a search is never a fed-up "
+               "guard's, and a search by a crooked guard is not counted: the person is searched again by "
+               "someone else.")
     room = ("Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor "
-            "or a doorway and put a Medical Probe Machine in it. It needs no doors of its own. Keep guards "
-            "close by: with none free, people wait.")
+            "or a doorway and put a Medical Probe Machine and a Room Scanner in it. It needs no doors of "
+            "its own. Keep guards close by: with none free, people wait.")
     rows = [
         ("object_MedicalProbeMachine", "Medical Probe Machine"),
         ("buildtoolbar_popup_obj_MedicalProbeMachine", machine),
+        ("object_RoomScanner", "Room Scanner"),
+        ("buildtoolbar_popup_obj_RoomScanner", scanner),
         ("room_stripsearch", "Strip Search"),
         ("buildtoolbar_popup_room_stripsearch", room),
         ("tooltip_MedicalProbeMachine_NoRoom", "Not in a Strip Search room. Zone one over it."),
+        ("tooltip_MedicalProbeMachine_NoScanner", "No Room Scanner in the room. Searches here can miss."),
         ("tooltip_MedicalProbeMachine_Holding", "Holding people until a guard has searched them."),
         ("tooltip_MedicalProbeMachine_Clear", "Nobody waiting to be searched."),
     ]

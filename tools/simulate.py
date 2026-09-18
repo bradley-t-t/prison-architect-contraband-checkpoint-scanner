@@ -10,9 +10,15 @@ the game's ten seconds (five for a crate) and only then clear them. There
 are workmen with crates in their arms, which the game will not search until
 they are set down, a crate left on the room's floor, and a crooked guard.
 
+Every target carries contraband. Every guard starts fed up, which in the
+game lets a search miss, and one of the searching guards is crooked and
+bribed, whose searches always miss while they are crooked. A Room Scanner
+stands in the room.
+
 Each script runs in its own Lua state with only what the game gives that
 kind of script. It checks, over every seed, that nobody and no crate gets
-more than a step out of the room before their search is done, that everyone
+more than a step out of the room before their search is done, that nothing
+leaves the room still carrying contraband, that everyone
 reaches the far end in the end, that every prisoner is hurt once a visit and
 no more, and that everybody has their own name back afterwards.
 
@@ -92,6 +98,8 @@ class World:
         self.rng = random.Random(seed)
         self.t = 0.0
         self.machine = Thing("MedicalProbeMachine", MACHINE[0] + 0.5, MACHINE[1] + 0.5)
+        self.scanner = Thing("RoomScanner", MACHINE[0] + 2.5, MACHINE[1] + 0.5)
+        self.missed = 0
         self.movers, self.crates, self.jobs, self.log = [], [], [], []
         self.requests = 0
         self.set_down = 0
@@ -106,9 +114,12 @@ class World:
         floor = Thing("Stack", 1.5, ROOM[0] + 2.5)
         self.crates.append(floor)
         self.guards = []
-        for i in range(2):
+        for i in range(3):
             g = Thing("Guard", 0.5 + i, 4.5)
             g.home = (g.x, g.y)
+            g.fed_up = True
+            if i == 0:
+                g.props["Corrupted"] = True
             self.guards.append(g)
             self.movers.append(g)
 
@@ -130,6 +141,7 @@ class World:
 
     def objects(self):
         yield self.machine
+        yield self.scanner
         for m in self.movers:
             yield m
         for c in self.crates:
@@ -231,6 +243,15 @@ class World:
                 return      # the game will not search a crate in someone's arms
             world.jobs.append(Job(o))
 
+        def set_needs(name, value):
+            # the game does this by name: the first object carrying it
+            for o in world.objects():
+                if o.props.get("Name") == name:
+                    if float(value) == 0:
+                        o.fed_up = False
+                        o.tended_at = world.t
+                    return
+
         def get_cell(x, y):
             return L.table(Room=L.table(i=ROOM_ID if in_room(x, y) else -1, u=1))
 
@@ -244,7 +265,8 @@ class World:
             g["this"] = proxy(self.machine)
             g["Game"] = L.table(DebugOut=debug_out)
         else:
-            g["Game"] = L.table(DebugOut=debug_out, GetObject=luafn(L, get_object))
+            g["Game"] = L.table(DebugOut=debug_out, GetObject=luafn(L, get_object),
+                                SetNeeds=luafn(L, set_needs))
             g["WorkQueue"] = L.table(Request=luafn(L, request))
 
     def step_towards(self, m, tx, ty, speed=WALK):
@@ -278,9 +300,17 @@ class World:
                     if j.work >= SEARCH_WORK[kind]:
                         j.done = True
                         o.last_searched = self.t
-                        o.searches += 1
+                        miss = g.props.get("Corrupted") is True or g.fed_up
+                        if miss:
+                            self.missed += 1
+                        else:
+                            o.contraband = False
+                            o.searches += 1
                         g.job, g.dest = None, None
         for g in self.guards:
+            # needs come back: a guard nobody tends is fed up again in a while
+            if self.t - getattr(g, "tended_at", -1e9) > 20:
+                g.fed_up = True
             if g.job is None:
                 self.step_towards(g, *g.home)
         for m in self.movers:
@@ -310,10 +340,13 @@ class World:
                 o.visits += 1
                 o.entered = True
                 o.searches_at_entry = o.searches
+                o.contraband = self.target(o)
             o.was_inside = inside
             if not o.entered or inside or not self.target(o):
                 continue
             if o.searches > getattr(o, "searches_at_entry", 0):
+                if getattr(o, "contraband", False):
+                    self.failures.append("%.1f %s %d left with contraband" % (self.t, o.kind, o.id))
                 continue
             out = max(ROOM[0] - o.y, o.y - (ROOM[1] + 1))
             if out > LEASH:
@@ -346,6 +379,13 @@ def run(seed):
             hurt = m.props.get("Damage") or 0
             if abs(hurt - INJURY * m.visits) > 1e-6 or m.visits != 1:
                 failures.append("Prisoner %d hurt %.2f over %d visits" % (m.id, hurt, m.visits))
+    for g in world.guards:
+        if g.props.get("Name"):
+            failures.append("guard %d is still named %r" % (g.id, g.props.get("Name")))
+    bent = world.guards[0]
+    if bent.props.get("Corrupted") is not True or bent.props.get("Exposed") is not True:
+        failures.append("the crooked guard ended corrupted=%r exposed=%r" % (
+            bent.props.get("Corrupted"), bent.props.get("Exposed")))
     if world.set_down != 2:
         failures.append("%d crates set down, not 2" % world.set_down)
     if world.machine.props.get("Name"):

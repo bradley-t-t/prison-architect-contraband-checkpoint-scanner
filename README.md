@@ -7,13 +7,18 @@ searched by a guard before they can leave it.
 
 - The **Strip Search** room type.
 - The **Medical Probe Machine**, in the Security objects. It runs the room
-  it stands in, and the room needs nothing else: no doors of its own, no
-  particular walls or floor.
+  it stands in.
+- The **Room Scanner**, in the Security objects. It stands on the room's
+  floor and is why a search there finds everything.
+
+The room needs those two and nothing else: no doors of its own, no
+particular walls or floor.
 
 ## How it works
 
 Zone a Strip Search room across a corridor, a doorway or the way into a
-cell block, and put a Medical Probe Machine anywhere in it. The room is
+cell block, and put a Medical Probe Machine and a Room Scanner anywhere in
+it. The room is
 every tile zoned together with the machine's.
 
 1. Someone steps in. A prisoner is probed on the way in, which costs them a
@@ -43,13 +48,25 @@ readable, and a search is one job: a job that ends after a search's worth of
 standing against the person it was walking to was that person's search. The
 machine's light is green with nobody waiting and red while it holds anyone.
 
+## Why the Room Scanner finds everything
+
+The game lets a search miss in two cases only. A guard whose needs are
+neglected skips the confiscation half the time, and a crooked guard who has
+been bribed skips it. With a Room Scanner in the room neither happens:
+
+- A guard at work on a search in the room has their needs met while they
+  work, so the search is never a fed-up guard's.
+- A crooked guard who comes to search is caught. They search as an honest
+  guard would for as long as the job lasts, and come out of it exposed,
+  with the game's own marker over them, for you to deal with.
+
+Without a scanner the machine still works and says so in its tooltip:
+searches in that room can miss.
+
 ## What it cannot do
 
 These are the game's own rules, and no room changes them:
 
-- A guard whose needs are neglected skips the confiscation half the time,
-  and a crooked guard who has been bribed skips it. Keep your guards happy
-  and your staff clean.
 - Contraband thrown over a wall, or dug under one, never goes through the
   room.
 - The game will not search the same person twice inside thirty seconds.
@@ -65,16 +82,19 @@ room: it reads the room its own tile is zoned into.
 ## Files
 
 - `data/scripts/MedicalProbeMachine.lua` is the machine, written by hand.
-- `data/world.lua` asks the game for the searches. The game gives its work
-  queue to a mod's world script and to no object's own script, so the
-  machine marks who is to be searched and this file does the asking.
+- `data/world.lua` asks the game for the searches and for the searching
+  guards' needs to be met. The game gives its work queue to a mod's world
+  script and to no object's own script, so the machine marks who is to be
+  searched and which guards are at work, and this file does the asking.
 - `tools/gen_assets.py` writes everything else the mod ships: the sprites,
   `materials.txt`, the language file and the thumbnail.
 - `tools/simulate.py` runs both scripts against a mock of the game (needs
   the `lupa` package), each in its own Lua state with only what the game
   gives that kind of script. People walk a corridor with the room zoned
-  across it, in both directions, and never stop trying to walk on. It
+  across it, in both directions, and never stop trying to walk on. Every
+  guard starts fed up and one searching guard is crooked and bribed. It
   checks, over every seed, that nobody and no crate gets more than a step
-  out of the room unsearched, that everyone gets through in the end, that
+  out of the room unsearched, that nothing leaves still carrying
+  contraband, that the crooked guard ends exposed, that everyone gets through in the end, that
   each prisoner is hurt once a visit, and that everyone has their own name
   back afterwards.

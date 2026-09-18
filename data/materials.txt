@@ -18,8 +18,27 @@ BEGIN Object
     BEGIN Sprite         x 2  y 0  w 2  h 2  RotateType 0  TopAligned false  END
 END
 
+BEGIN Object
+    Name                 RoomScanner
+    ConstructionTime     10.0000
+    Toughness            200.000
+    Price                -800
+    Filter               Security
+    RenderDepth          1
+    Group                StaticObject
+    BlockedBy            Wall
+    BlockedBy            UtilityStation
+    BlockedBy            StaticObject
+    MadeOf               SolidMetal
+    Properties           StaticObject
+    NumSprites           1
+    BEGIN ToolbarSprite  x 4  y 0  w 2  h 2  END
+    BEGIN Sprite         x 4  y 0  w 2  h 2  RotateType 0  TopAligned false  END
+END
+
 BEGIN Room
     Name                 StripSearch
     BEGIN Requirement Type MinimumSize  x 2  y 2  END
     BEGIN Requirement Type Object  Id MedicalProbeMachine  END
+    BEGIN Requirement Type Object  Id RoomScanner  END
 END

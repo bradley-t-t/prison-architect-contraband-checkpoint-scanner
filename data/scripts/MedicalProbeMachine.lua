@@ -24,6 +24,16 @@
 -- the room is put back where they last stood inside it, and so is anyone
 -- carrying an unsearched crate.
 --
+-- A Room Scanner on the room's floor is what makes a search certain. The
+-- game lets a search miss in two cases only: the guard is fed up, their
+-- needs neglected, or the guard is crooked and bribed. With a scanner in
+-- the room the machine closes both. It names each guard at work on a
+-- search GUARD_PREFIX followed by their id, and the world script has the
+-- game meet that guard's needs, so the search is never a fed-up guard's. And
+-- a crooked guard who comes to search is caught by the scanner: they search
+-- as an honest guard would for as long as the job lasts, and come out of it
+-- exposed, for the player to deal with.
+--
 -- The game reports nothing when a search ends, so the machine watches the
 -- guards. A guard's job is readable and a search is one job: a job that
 -- ends after a search's worth of standing against someone still to be
@@ -51,6 +61,10 @@ local RETRY_AFTER = 40
 -- injured it will leave anyone.
 local PROBE_INJURY = 0.05
 local PROBE_CEILING = 0.6
+-- How often a guard at work on a search has their needs met.
+local TEND_EVERY = 4
+local SCANNER = "RoomScanner"
+local GUARD_PREFIX = "StripSearchGuard"
 local CALL_NAME = "StripSearchCall"
 local MARK_PREFIX = "StripSearchTarget"
 local DEBUG = false
@@ -83,6 +97,8 @@ local layoutTimer = LAYOUT_RECHECK
 local roomTiles = {}
 local roomReach = 1
 local zoned = false
+-- Whether a Room Scanner stands in the room.
+local scanned = false
 
 -- Everyone and every crate in the room, or held to it, keyed by object id:
 --   { id, obj, kind, x, y, inX, inY (where they last stood inside), target,
@@ -178,6 +194,13 @@ local function mapRoom()
         end
     end
     roomTiles, roomReach, zoned = tiles, reach, home >= 0
+    scanned = false
+    for obj, _ in pairs(Find(SCANNER, reach + 1) or {}) do
+        local x, y = position(obj)
+        if x ~= nil and tiles[tileKey(x, y)] == true then
+            scanned = true
+        end
+    end
 end
 
 local function inside(x, y)
@@ -463,12 +486,13 @@ local function creditSearch(track, pending)
     for i, record in ipairs(pending) do
         if record.id == best then
             local needed = isCrateKind(record.kind) and SEARCH_TIME_CRATE or SEARCH_TIME_ENTITY
-            if bestWork >= needed - SEARCH_SLACK then
-                record.searched = true
-                unmark(record)
-                table.remove(pending, i)
-                log(record.kind .. " " .. tostring(record.id) .. " searched")
+            if bestWork < needed - SEARCH_SLACK then
+                return
             end
+            record.searched = true
+            unmark(record)
+            table.remove(pending, i)
+            log(record.kind .. " " .. tostring(record.id) .. " searched")
             return
         end
     end
@@ -480,6 +504,12 @@ end
 local function watchSearches(elapsed)
     local pending = unsearched()
     if #pending == 0 then
+        for _, track in pairs(guardJobs) do
+            if track.crooked and track.obj ~= nil then
+                Set(track.obj, "Corrupted", true)
+                Set(track.obj, "Exposed", true)
+            end
+        end
         guardJobs = {}
         return 0
     end
@@ -498,22 +528,25 @@ local function watchSearches(elapsed)
             waiting = true
         end
     end
-    if waiting and nameOf(this) ~= CALL_NAME then
-        this.Name = CALL_NAME
-    end
     local seen, progress = {}, false
     for _, guard in ipairs(guards) do
         seen[guard.id] = true
         local jobId = number(Get(guard.obj, "JobId"), -1)
         local track = guardJobs[guard.id]
         if track ~= nil and track.id ~= jobId then
+            if track.crooked then
+                -- the job is over: they are what they were, and now known
+                Set(guard.obj, "Corrupted", true)
+                Set(guard.obj, "Exposed", true)
+                log("guard " .. tostring(guard.id) .. " exposed")
+            end
             creditSearch(track, pending)
             guardJobs[guard.id] = nil
             track = nil
         end
         if jobId >= 0 then
             if track == nil then
-                track = { id = jobId, work = {} }
+                track = { id = jobId, work = {}, obj = guard.obj }
                 guardJobs[guard.id] = track
             end
             -- the work goes to the nearest person the guard could be searching
@@ -531,13 +564,34 @@ local function watchSearches(elapsed)
                 track.work[nearest.id] = (track.work[nearest.id] or 0)
                     + elapsed * (SEARCH_RATE[guard.kind] or 1)
                 progress = true
+                if scanned and not track.crooked and Get(guard.obj, "Corrupted") == true then
+                    -- the game lets a bribed crooked guard miss: for this
+                    -- job they are not one
+                    track.crooked = true
+                    Set(guard.obj, "Corrupted", false)
+                    log("guard " .. tostring(guard.id) .. " is crooked, held honest for this search")
+                end
+                if scanned and clock - (track.tended or -TEND_EVERY) >= TEND_EVERY
+                    and nameOf(guard.obj) == "" then
+                    -- the world script meets their needs and clears the name
+                    track.tended = clock
+                    Set(guard.obj, "Name", GUARD_PREFIX .. tostring(guard.id))
+                    waiting = true
+                end
             end
         end
     end
-    for id in pairs(guardJobs) do
+    for id, track in pairs(guardJobs) do
         if not seen[id] then
+            if track.crooked and track.obj ~= nil then
+                Set(track.obj, "Corrupted", true)
+                Set(track.obj, "Exposed", true)
+            end
             guardJobs[id] = nil
         end
+    end
+    if waiting and nameOf(this) ~= CALL_NAME then
+        this.Name = CALL_NAME
     end
     if progress then
         lastProgress = clock
@@ -563,6 +617,8 @@ local function showTooltip(waiting)
     local tip = "tooltip_MedicalProbeMachine_Clear"
     if not zoned then
         tip = "tooltip_MedicalProbeMachine_NoRoom"
+    elseif not scanned then
+        tip = "tooltip_MedicalProbeMachine_NoScanner"
     elseif waiting > 0 then
         tip = "tooltip_MedicalProbeMachine_Holding"
     end
