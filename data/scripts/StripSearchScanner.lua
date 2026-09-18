@@ -513,23 +513,24 @@ end
 
 local function pinDoors()
     eachDoor(function(_, _, door)
-        -- A door to be held open is a plain door first: the game keeps a
-        -- locked door shut whatever is written to its openness.
+        -- A door is held open by the game's own lock, which keeps it open
+        -- without a gap; an openness written from here lasts only until the
+        -- door's next move, and a door held that way flickers. Shut, it is
+        -- a plain door whose openness is written back to nothing, or one
+        -- locked shut. "locked" is the mode last written: a door found
+        -- locked open that this script did not lock is the player's, and
+        -- is left to them until they unlock it.
         door.open = number(Get(door.obj, "Open"), 0)
-        if number(Get(door.obj, "Mode"), MODE_NORMAL) == MODE_LOCKED_OPEN then
-            door.locked = nil
+        local now = number(Get(door.obj, "Mode"), MODE_NORMAL)
+        if now == MODE_LOCKED_OPEN and door.locked ~= MODE_LOCKED_OPEN then
             return
         end
-        local lock = door.lock and not door.want
-        if lock ~= door.locked then
-            Set(door.obj, "Mode", lock and MODE_LOCKED_SHUT or MODE_NORMAL)
-            door.locked = lock
+        local wanted = door.want and MODE_LOCKED_OPEN or (door.lock and MODE_LOCKED_SHUT or MODE_NORMAL)
+        if now ~= wanted then
+            Set(door.obj, "Mode", wanted)
         end
-        if door.want then
-            if door.open < 1 then
-                Set(door.obj, "Open", 1)
-            end
-        elseif door.open > 0 then
+        door.locked = wanted
+        if not door.want and door.open > 0 then
             Set(door.obj, "Open", 0)
         end
     end)

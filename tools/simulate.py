@@ -351,7 +351,7 @@ class World:
         self.tick += 1
         # doors swing for whoever is waiting at them, and drift shut otherwise
         for d in self.doors:
-            opening = d.requested and d.props.get("Mode") != 1
+            opening = d.props.get("Mode") == 2 or (d.requested and d.props.get("Mode") != 1)
             d.props["Open"] = max(0.0, min(1.0, d.props["Open"] + (DOOR_SPEED if opening else -DOOR_SPEED) * DT))
             d.requested = False
         for m in self.movers:
