@@ -1,5 +1,5 @@
 object_MedicalProbeMachine                    Medical Probe Machine
-buildtoolbar_popup_obj_MedicalProbeMachine    Runs the Strip Search room it stands in. Every prisoner who steps into the room is probed, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too. Nobody unsearched leaves the room, and neither does anyone carrying an unsearched crate.
+buildtoolbar_popup_obj_MedicalProbeMachine    Runs the Strip Search room it stands in. Every prisoner who steps into the room is probed, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched leaves the room.
 room_stripsearch                              Strip Search
 buildtoolbar_popup_room_stripsearch           Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor or a doorway and put a Medical Probe Machine in it. It needs no doors of its own. Keep guards close by: with none free, people wait.
 tooltip_MedicalProbeMachine_NoRoom            Not in a Strip Search room. Zone one over it.

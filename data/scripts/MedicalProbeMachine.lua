@@ -15,6 +15,10 @@
 -- A prisoner is probed as they come in, which hurts a little: a small
 -- injury, once per visit.
 --
+-- The game will not search a crate in someone's arms, so whoever carries an
+-- unsearched one into the room is made to set it down, and it is searched
+-- on the floor.
+--
 -- Until their search is done nobody leaves. There is no door to hold shut,
 -- so the machine holds the person instead: anyone unsearched found outside
 -- the room is put back where they last stood inside it, and so is anyone
@@ -275,6 +279,20 @@ local function putBack(record)
     log(record.kind .. " " .. tostring(record.id) .. " put back")
 end
 
+-- Makes whoever is carrying a crate set it down where they stand. The game
+-- will not search a crate in someone's arms, so it is searched on the floor.
+-- This is what the game's own drop does to the two of them: neither holds
+-- the other any more.
+local function setDown(record, carrier)
+    Set(carrier.obj, "Carrying.i", -1)
+    Set(carrier.obj, "Carrying.u", -1)
+    Set(record.obj, "CarrierId.i", -1)
+    Set(record.obj, "CarrierId.u", -1)
+    Set(record.obj, "Carried", 0)
+    record.carrier = nil
+    log(record.kind .. " " .. tostring(record.id) .. " set down by " .. carrier.kind .. " " .. tostring(carrier.id))
+end
+
 local function note(id, obj, kind, x, y)
     local record = records[id]
     if record == nil then
@@ -333,6 +351,9 @@ local function scanPeople()
                     record.carrier = carrier ~= nil and carrierId or nil
                     if inside(x, y) then
                         record.inX, record.inY = x, y
+                        if carrier ~= nil and held(record) then
+                            setDown(record, carrier)
+                        end
                     end
                 elseif records[id] ~= nil then
                     local record = note(id, obj, kind, x, y)

@@ -24,11 +24,14 @@ every tile zoned together with the machine's.
    game's own search is the only thing that takes contraband off a person,
    and one search takes everything the guard finds, so that is what is
    used.
-3. Until that search is done they do not leave. There is no door to hold
+3. The game will not search a crate while someone is carrying it, so
+   whoever carries an unsearched crate into the room is made to set it
+   down there. It is searched on the floor, and the game has it collected
+   again afterwards.
+4. Until that search is done they do not leave. There is no door to hold
    shut, so the machine holds the person: anyone unsearched who steps out
-   of the room is put back where they last stood inside it. Someone
-   carrying an unsearched crate is put back the same way, crate and all.
-4. Once searched they walk on. Coming back in later is a new visit and a
+   of the room is put back where they last stood inside it.
+5. Once searched they walk on. Coming back in later is a new visit and a
    new search.
 
 Other staff, visitors and dogs walk through freely. The game's search does

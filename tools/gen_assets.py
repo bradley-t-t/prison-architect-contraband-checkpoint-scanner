@@ -131,8 +131,8 @@ END
 def language_text():
     machine = ("Runs the Strip Search room it stands in. Every prisoner who steps into the room is probed, "
                "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
-               "searched too. Nobody unsearched leaves the room, and neither does anyone carrying an "
-               "unsearched crate.")
+               "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
+               "leaves the room.")
     room = ("Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor "
             "or a doorway and put a Medical Probe Machine in it. It needs no doors of its own. Keep guards "
             "close by: with none free, people wait.")

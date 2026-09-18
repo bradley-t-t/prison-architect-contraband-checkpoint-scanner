@@ -7,8 +7,8 @@ anywhere. People walk the corridor from one end to the other, in both
 directions, and keep walking whatever happens to them. Guards take the
 search jobs the scripts ask for, walk to the person, stand against them for
 the game's ten seconds (five for a crate) and only then clear them. There
-are workmen with crates in their arms, a crate left on the room's floor, and
-a crooked guard.
+are workmen with crates in their arms, which the game will not search until
+they are set down, a crate left on the room's floor, and a crooked guard.
 
 Each script runs in its own Lua state with only what the game gives that
 kind of script. It checks, over every seed, that nobody and no crate gets
@@ -94,6 +94,7 @@ class World:
         self.machine = Thing("MedicalProbeMachine", MACHINE[0] + 0.5, MACHINE[1] + 0.5)
         self.movers, self.crates, self.jobs, self.log = [], [], [], []
         self.requests = 0
+        self.set_down = 0
         self.failures = []
         for i in range(6):
             self.walker("Prisoner", up=i % 2 == 0, name="Prisoner %d" % i)
@@ -200,6 +201,11 @@ class World:
             o, key, value = resolve(args[0]), args[1], args[2]
             if o is None:
                 return
+            if key == "CarrierId.i" and float(value) < 0:
+                for m in world.movers:
+                    if m.carrying is o:
+                        m.carrying = None
+                        world.set_down += 1
             if key == "Pos.x":
                 o.x = float(value)
             elif key == "Pos.y":
@@ -221,6 +227,8 @@ class World:
                 return
             if world.t - o.last_searched < SEARCH_COOLDOWN:
                 return
+            if o.props.get("CarrierId.i", -1) not in (-1, None) and o.props.get("CarrierId.i", -1) >= 0:
+                return      # the game will not search a crate in someone's arms
             world.jobs.append(Job(o))
 
         def get_cell(x, y):
@@ -338,6 +346,8 @@ def run(seed):
             hurt = m.props.get("Damage") or 0
             if abs(hurt - INJURY * m.visits) > 1e-6 or m.visits != 1:
                 failures.append("Prisoner %d hurt %.2f over %d visits" % (m.id, hurt, m.visits))
+    if world.set_down != 2:
+        failures.append("%d crates set down, not 2" % world.set_down)
     if world.machine.props.get("Name"):
         failures.append("the machine is still calling")
     searched = sum(1 for o in list(world.movers) + world.crates if o.searches)
