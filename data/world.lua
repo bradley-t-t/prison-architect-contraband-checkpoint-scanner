@@ -1,4 +1,4 @@
--- Strip Search: the mod's world script. The game hands its work queue to
+-- Contraband Checkpoint Scanner: the mod's world script. The game hands its work queue to
 -- this script and to no object's own script, so a Medical Probe Machine
 -- cannot ask for a guard search itself. It leaves word instead, in the one
 -- place both scripts can reach: every object has a Name a script can look

@@ -1,4 +1,4 @@
--- Strip Search: the Medical Probe Machine. It stands in a Strip Search room
+-- Contraband Checkpoint Scanner: the Medical Probe Machine. It stands in a Strip Search room
 -- and runs it. The room is every tile zoned with the machine's own tile,
 -- found by walking outwards from it, so the room needs no doors of its own
 -- to work.

@@ -1,4 +1,4 @@
-"""Builds every generated file the Strip Search mod ships.
+"""Builds every generated file the Contraband Checkpoint Scanner mod ships.
 
 Outputs, relative to the mod root (the parent of this tools/ folder):
   data/sprites.png                  the Medical Probe Machine's two frames and the Room Scanner

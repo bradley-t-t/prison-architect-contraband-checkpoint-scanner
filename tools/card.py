@@ -85,18 +85,22 @@ def face(size):
     return ImageFont.load_default(size)
 
 
-def text(label, size, colour, widest):
-    """A line of text, set smaller if it would run wider than widest."""
+def fitting(label, size, widest):
+    """The face to set a line in: smaller if it would run wider than widest."""
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
     while True:
         font = face(size)
-        left, top, right, bottom = probe.textbbox((0, 0), label, font=font)
+        left, _, right, _ = probe.textbbox((0, 0), label, font=font)
         if right - left <= widest or size <= 12:
-            break
+            return font
         size -= 2
-    line = Image.new("RGBA", (right - left + 4, bottom - top + 4), (0, 0, 0, 0))
-    ImageDraw.Draw(line).text((2 - left, 2 - top), label, font=font, fill=colour)
-    return line
+
+
+def line(draw, label, font, colour, middle):
+    """Sets a line so its capitals are centred on middle, whatever its size
+    and whether or not it has letters that hang below the line."""
+    _, top, _, bottom = font.getbbox("H", anchor="ls")
+    draw.text((SIZE // 2, middle + (bottom - top) // 2), label, font=font, fill=colour, anchor="ms")
 
 
 def brackets(draw):
@@ -123,10 +127,9 @@ def frame(art, name):
     brackets(draw)
     draw.rectangle([0, BAND_TOP, SIZE, SIZE], fill=BAND)
     draw.rectangle([0, BAND_TOP, SIZE, BAND_TOP + LINE - 1], fill=ACCENT)
-    title = text(name, TITLE_SIZE, TITLE, SIZE - 56)
-    card.alpha_composite(title, ((SIZE - title.width) // 2, BAND_TOP + 20))
-    sub = text(GAME, SUBTITLE_SIZE, SUBTITLE, SIZE - 56)
-    card.alpha_composite(sub, ((SIZE - sub.width) // 2, SIZE - 40))
+    draw = ImageDraw.Draw(card)
+    line(draw, name, fitting(name, TITLE_SIZE, SIZE - 56), TITLE, BAND_TOP + 44)
+    line(draw, GAME, fitting(GAME, SUBTITLE_SIZE, SIZE - 56), SUBTITLE, SIZE - 28)
     return card.convert("RGB")
 
 

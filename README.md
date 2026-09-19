@@ -1,4 +1,4 @@
-# Strip Search
+# Contraband Checkpoint Scanner
 
 A Prison Architect mod. Anyone who steps into a Strip Search room is
 searched by a guard before they can leave it.
