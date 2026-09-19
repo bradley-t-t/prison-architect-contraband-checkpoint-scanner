@@ -4,7 +4,7 @@ Outputs, relative to the mod root (the parent of this tools/ folder):
   data/sprites.png                  the Medical Probe Machine's two frames and the Room Scanner
   data/materials.txt                the machine, the scanner and the room
   data/language/base-language.txt   names, build-menu text and tooltips
-  thumbnail.png                     the mod's card, built by card.py around tools/card-art.png
+  tools/card-art.png                the art on the mod's Workshop card; thumbnail.png is exported from Figma
 
 Usage: python gen_assets.py
 
@@ -16,7 +16,6 @@ import os
 
 from PIL import Image, ImageChops, ImageDraw
 
-import card
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
@@ -220,8 +219,7 @@ def main():
     with open(os.path.join(DATA, "language", "base-language.txt"), "w") as f:
         f.write(language_text())
     save_image(build_thumbnail(), os.path.join(ROOT, "tools", "card-art.png"))
-    card.build(ROOT)
-    print("wrote sprites.png, materials.txt, base-language.txt, thumbnail.png")
+    print("wrote sprites.png, materials.txt, base-language.txt, tools/card-art.png")
 
 
 if __name__ == "__main__":
