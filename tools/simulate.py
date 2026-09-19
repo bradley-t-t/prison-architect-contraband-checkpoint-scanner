@@ -2,7 +2,7 @@
 of the game.
 
 The mock stands in for the engine. Its map is a corridor three tiles wide
-with a Strip Search room zoned across the middle of it and no doors
+with a Contraband Checkpoint room zoned across the middle of it and no doors
 anywhere. People walk the corridor from one end to the other, in both
 directions, and keep walking whatever happens to them. Guards take the
 search jobs the scripts ask for, walk to the person, stand against them for

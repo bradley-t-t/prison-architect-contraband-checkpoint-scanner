@@ -175,11 +175,11 @@ END
 
 
 def language_text():
-    machine = ("Runs the Strip Search room it stands in. Every prisoner who steps into the room is probed, "
+    machine = ("Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is probed, "
                "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
                "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
                "leaves the room.")
-    scanner = ("Stands on the floor of a Strip Search room and catches crooked guards. A crooked guard who "
+    scanner = ("Stands on the floor of a Contraband Checkpoint room and catches crooked guards. A crooked guard who "
                "comes to search in the room searches as an honest one would, so a bribe buys nothing, and "
                "comes out of the job exposed.")
     room = ("Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor "
@@ -190,9 +190,9 @@ def language_text():
         ("buildtoolbar_popup_obj_MedicalProbeMachine", machine),
         ("object_RoomScanner", "Room Scanner"),
         ("buildtoolbar_popup_obj_RoomScanner", scanner),
-        ("room_stripsearch", "Strip Search"),
+        ("room_stripsearch", "Contraband Checkpoint"),
         ("buildtoolbar_popup_room_stripsearch", room),
-        ("tooltip_MedicalProbeMachine_NoRoom", "Not in a Strip Search room. Zone one over it."),
+        ("tooltip_MedicalProbeMachine_NoRoom", "Not in a Contraband Checkpoint room. Zone one over it."),
         ("tooltip_MedicalProbeMachine_NoScanner", "No Room Scanner in the room. A bribed guard's search here can miss."),
         ("tooltip_MedicalProbeMachine_Holding", "Holding people until a guard has searched them."),
         ("tooltip_MedicalProbeMachine_Clear", "Nobody waiting to be searched."),

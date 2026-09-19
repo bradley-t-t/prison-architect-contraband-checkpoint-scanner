@@ -1,11 +1,11 @@
 # Contraband Checkpoint Scanner
 
-A Prison Architect mod. Anyone who steps into a Strip Search room is
+A Prison Architect mod. Anyone who steps into a Contraband Checkpoint room is
 searched by a guard before they can leave it.
 
 ## What you get
 
-- The **Strip Search** room type.
+- The **Contraband Checkpoint** room type.
 - The **Medical Probe Machine**, in the Security objects. It runs the room
   it stands in.
 - The **Room Scanner**, in the Security objects. It stands on the room's
@@ -16,7 +16,7 @@ particular walls or floor.
 
 ## How it works
 
-Zone a Strip Search room across a corridor, a doorway or the way into a
+Zone a Contraband Checkpoint room across a corridor, a doorway or the way into a
 cell block, and put a Medical Probe Machine and a Room Scanner anywhere in
 it. The room is
 every tile zoned together with the machine's.
@@ -91,7 +91,7 @@ These are the game's own rules, and no room changes them:
 ## Why the room needs the machine
 
 The game tells a script which room a tile belongs to, and never what kind
-of room that is. The machine is how the mod knows a room is a Strip Search
+of room that is. The machine is how the mod knows a room is a Contraband Checkpoint
 room: it reads the room its own tile is zoned into.
 
 ## Files
