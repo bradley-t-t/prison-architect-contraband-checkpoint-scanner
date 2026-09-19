@@ -1,4 +1,4 @@
-"""Runs the Medical Probe Machine script and the world script against a mock
+"""Runs the Contraband Scanner script and the world script against a mock
 of the game.
 
 The mock stands in for the engine. Its map is a corridor three tiles wide
@@ -11,7 +11,7 @@ is a guard escorting a shackled prisoner, workmen with crates in their arms, whi
 they are set down, a crate left on the room's floor, and a crooked guard.
 
 Every target carries contraband, and one of the searching guards is crooked
-and bribed, whose searches always miss while they are crooked. A Room Scanner
+and bribed, whose searches always miss while they are crooked. A Guard Scanner
 stands in the room.
 
 Each script runs in its own Lua state with only what the game gives that

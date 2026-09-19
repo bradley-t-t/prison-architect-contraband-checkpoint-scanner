@@ -6,9 +6,9 @@ searched by a guard before they can leave it.
 ## What you get
 
 - The **Contraband Checkpoint** room type.
-- The **Medical Probe Machine**, in the Security objects. It runs the room
+- The **Contraband Scanner**, in the Security objects. It runs the room
   it stands in.
-- The **Room Scanner**, in the Security objects. It stands on the room's
+- The **Guard Scanner**, in the Security objects. It stands on the room's
   floor and is why a search there finds everything.
 
 The room needs those two and nothing else: no doors of its own, no
@@ -17,11 +17,11 @@ particular walls or floor.
 ## How it works
 
 Zone a Contraband Checkpoint room across a corridor, a doorway or the way into a
-cell block, and put a Medical Probe Machine and a Room Scanner anywhere in
+cell block, and put a Contraband Scanner and a Guard Scanner anywhere in
 it. The room is
 every tile zoned together with the machine's.
 
-1. Someone steps in. A prisoner is probed on the way in, which costs them a
+1. Someone steps in. A prisoner is scanned on the way in, which costs them a
    small injury, once per visit.
 2. The machine asks the game for a guard search of everyone inside who
    could be carrying anything: every prisoner, any guard the game knows to
@@ -54,11 +54,11 @@ A person's search takes twice as long as a crate's, so the length of the
 job tells the two apart when a crate lies beside someone. The
 machine's light is green with nobody waiting and red while it holds anyone.
 
-## What the Room Scanner does
+## What the Guard Scanner does
 
 The game lets a search miss in two cases. A crooked guard who has been
 bribed skips the confiscation, and a guard whose needs are neglected skips
-it some of the time. The Room Scanner closes the first:
+it some of the time. The Guard Scanner closes the first:
 
 - A crooked guard who comes to search in the room is caught. They search as
   an honest guard would for as long as the job lasts, and come out of it

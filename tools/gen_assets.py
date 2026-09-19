@@ -1,7 +1,7 @@
 """Builds every generated file the Contraband Checkpoint Scanner mod ships.
 
 Outputs, relative to the mod root (the parent of this tools/ folder):
-  data/sprites.png                  the Medical Probe Machine's two frames and the Room Scanner
+  data/sprites.png                  the Contraband Scanner's two frames and the Guard Scanner
   data/materials.txt                the machine, the scanner and the room
   data/language/base-language.txt   names, build-menu text and tooltips
   tools/card-art.png                the art on the mod's Workshop card; thumbnail.png is exported from Figma
@@ -42,7 +42,7 @@ LAMPS = [
 SHEET_CELLS = (8, 2)
 PRICE = 500
 SCANNER_PRICE = 800
-SCANNER_CELL = 4             # where the Room Scanner sits on the sheet, in cells
+SCANNER_CELL = 4             # where the Guard Scanner sits on the sheet, in cells
 LENS = dict(core=(72, 165, 255), hot=(205, 235, 255), dim=(22, 78, 190))
 
 
@@ -89,7 +89,7 @@ def machine_sprite(frame):
 
 
 def scanner_sprite():
-    """The Room Scanner seen from above: a round sensor head on a dark floor
+    """The Guard Scanner seen from above: a round sensor head on a dark floor
     plate, with a blue lens and four short feet."""
     im = overlay()
     d = ImageDraw.Draw(im)
@@ -174,7 +174,7 @@ END
 
 
 def language_text():
-    machine = ("Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is probed, "
+    machine = ("Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is scanned, "
                "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
                "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
                "leaves the room.")
@@ -182,17 +182,17 @@ def language_text():
                "comes to search in the room searches as an honest one would, so a bribe buys nothing, and "
                "comes out of the job exposed.")
     room = ("Anyone who steps in is searched by a guard before they can leave. Zone it across a corridor "
-            "or a doorway and put a Medical Probe Machine and a Room Scanner in it. It needs no doors of "
+            "or a doorway and put a Contraband Scanner and a Guard Scanner in it. It needs no doors of "
             "its own. Keep guards close by: with none free, people wait.")
     rows = [
-        ("object_MedicalProbeMachine", "Medical Probe Machine"),
+        ("object_MedicalProbeMachine", "Contraband Scanner"),
         ("buildtoolbar_popup_obj_MedicalProbeMachine", machine),
-        ("object_RoomScanner", "Room Scanner"),
+        ("object_RoomScanner", "Guard Scanner"),
         ("buildtoolbar_popup_obj_RoomScanner", scanner),
         ("room_stripsearch", "Contraband Checkpoint"),
         ("buildtoolbar_popup_room_stripsearch", room),
         ("tooltip_MedicalProbeMachine_NoRoom", "Not in a Contraband Checkpoint room. Zone one over it."),
-        ("tooltip_MedicalProbeMachine_NoScanner", "No Room Scanner in the room. A bribed guard's search here can miss."),
+        ("tooltip_MedicalProbeMachine_NoScanner", "No Guard Scanner in the room. A bribed guard's search here can miss."),
         ("tooltip_MedicalProbeMachine_Holding", "Holding people until a guard has searched them."),
         ("tooltip_MedicalProbeMachine_Clear", "Nobody waiting to be searched."),
     ]

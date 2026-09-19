@@ -1,4 +1,4 @@
--- Contraband Checkpoint Scanner: the Medical Probe Machine. It stands in a Contraband Checkpoint room
+-- Contraband Checkpoint Scanner: the Contraband Scanner. It stands in a Contraband Checkpoint room
 -- and runs it. The room is every tile zoned with the machine's own tile,
 -- found by walking outwards from it, so the room needs no doors of its own
 -- to work.
@@ -12,7 +12,7 @@
 -- to be searched MARK_PREFIX followed by their id, and the world script
 -- asks the game for those searches and clears the names.
 --
--- A prisoner is probed as they come in, which hurts a little: a small
+-- A prisoner is scanned as they come in, which hurts a little: a small
 -- injury, once per visit.
 --
 -- The game will not search anything in someone's arms, so whoever carries
@@ -27,7 +27,7 @@
 -- the room is put back where they last stood inside it, and so is anyone
 -- carrying an unsearched crate.
 --
--- A Room Scanner on the room's floor deals with crooked guards. The game
+-- A Guard Scanner on the room's floor deals with crooked guards. The game
 -- lets a bribed crooked guard miss what they search for. With a scanner in
 -- the room, a crooked guard who comes to search is caught: they search as
 -- an honest guard would for as long as the job lasts, and come out of it
@@ -118,7 +118,7 @@ local layoutTimer = math.random() * LAYOUT_RECHECK
 local roomTiles = {}
 local roomReach = 1
 local zoned = false
--- Whether a Room Scanner stands in the room.
+-- Whether a Guard Scanner stands in the room.
 local scanned = false
 
 -- Everyone and every crate in the room, or held to it, keyed by object id:
