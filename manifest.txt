@@ -1,4 +1,4 @@
 Name                 "Contraband Checkpoint Scanner"
-Author               Trenton
+Author               Knight
 Description          "A Contraband Checkpoint room, the Contraband Scanner that runs it and the Guard Scanner that catches crooked guards. Every prisoner who steps into the room is scanned, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too. Nobody unsearched leaves the room. The scanner makes a crooked guard search honestly and exposes them. It needs no doors of its own."
 Version              2.5
