@@ -44,7 +44,7 @@ local SCAN_INTERVAL = 0.25
 -- With nobody in reach the machine looks this often instead. Reach runs
 -- MARGIN tiles past the room, more than anyone walks in that time.
 local IDLE_INTERVAL = 1
-local LAYOUT_RECHECK = 10
+local LAYOUT_RECHECK = 30
 local MAX_ROOM_TILES = 400
 -- How far past the room's edge people are looked for.
 local MARGIN = 4
