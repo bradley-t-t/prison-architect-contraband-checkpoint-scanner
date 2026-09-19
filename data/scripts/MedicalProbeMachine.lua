@@ -448,9 +448,9 @@ local function scanPeople()
     for _, kind in ipairs(WATCHED_KINDS) do
         local crate = isCrateKind(kind)
         for obj, _ in pairs(Find(kind, range) or {}) do
-            anyone = true
             local x, y = position(obj)
             local id = objectId(obj)
+            local stored = false
             if x ~= nil and id ~= nil then
                 local known = records[id] ~= nil
                 local within = inside(x, y)
@@ -459,6 +459,7 @@ local function scanPeople()
                     -- stored on a shelf, a cooker or a truck rather than in
                     -- anyone's arms: part of the furniture, not a delivery
                     within, known = false, false
+                    stored = true
                 end
                 if SEARCHERS[kind] then
                     guards[#guards + 1] = { obj = obj, id = id, kind = kind, x = x, y = y }
@@ -471,6 +472,10 @@ local function scanPeople()
                         outside[id] = true
                     end
                 end
+            end
+            -- A stored crate never moves, so it is no reason to look often.
+            if not stored then
+                anyone = true
             end
         end
     end
