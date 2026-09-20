@@ -21,8 +21,7 @@ cell block, and put a Contraband Scanner and a Guard Scanner anywhere in
 it. The room is
 every tile zoned together with the machine's.
 
-1. Someone steps in. A prisoner is scanned on the way in, which costs them a
-   small injury, once per visit.
+1. Someone steps in. The scan costs them nothing: nobody is hurt by it.
 2. The machine asks the game for a guard search of everyone inside who
    could be carrying anything: every prisoner, any guard the game knows to
    be crooked, and every crate, on the floor or in someone's arms. The
@@ -110,5 +109,5 @@ room: it reads the room its own tile is zoned into.
   checks, over every seed, that nobody and no crate gets more than a step
   out of the room unsearched, that nothing leaves still carrying
   contraband, that the crooked guard ends exposed, that everyone gets through in the end, that
-  each prisoner is hurt once a visit, and that everyone has their own name
+  the scan hurts nobody, and that everyone has their own name
   back afterwards.

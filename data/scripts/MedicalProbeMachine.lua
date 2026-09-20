@@ -12,9 +12,6 @@
 -- to be searched MARK_PREFIX followed by their id, and the world script
 -- asks the game for those searches and clears the names.
 --
--- A prisoner is scanned as they come in, which hurts a little: a small
--- injury, once per visit.
---
 -- The game will not search anything in someone's arms, so whoever carries
 -- an unsearched crate into the room, or escorts an unsearched prisoner into
 -- it, is made to let go, and the search happens in the room.
@@ -70,10 +67,6 @@ local SEARCH_COOLDOWN = 30
 -- Looking for a carrier who is not a guard means searching the map for
 -- every kind of person. It is done this often at most.
 local CARRIER_SEARCH_EVERY = 2
--- What the probe costs a prisoner, of a whole life of 1, and the most
--- injured it will leave anyone.
-local PROBE_INJURY = 0.05
-local PROBE_CEILING = 0.6
 local SCANNER = "RoomScanner"
 local CALL_NAME = "StripSearchCall"
 local MARK_PREFIX = "StripSearchTarget"
@@ -307,15 +300,6 @@ local function held(record)
     return record.target and not record.searched
 end
 
--- The probe: a small injury, never enough to put anyone down.
-local function probe(record)
-    local damage = number(Get(record.obj, "Damage"), 0)
-    if damage < PROBE_CEILING then
-        Set(record.obj, "Damage", math.min(PROBE_CEILING, damage + PROBE_INJURY))
-    end
-    log("prisoner " .. tostring(record.id) .. " probed")
-end
-
 -- Puts someone back where they last stood inside the room.
 local function putBack(record)
     if record.inX == nil then
@@ -353,11 +337,9 @@ local function note(id, obj, kind, x, y)
             record.searched = true
         end
         if isMark(nameOf(obj)) then
-            -- marked before a save: carry on from there, already probed
+            -- marked before a save: carry on from there
             record.marked = clock
             record.ownName = ""
-        elseif kind == "Prisoner" then
-            probe(record)
         end
         log(kind .. " " .. tostring(id) .. " came in" .. (record.target and ", to be searched" or ""))
     end

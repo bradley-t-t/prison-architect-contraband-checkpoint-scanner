@@ -175,7 +175,7 @@ END
 
 def language_text():
     machine = ("Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is scanned, "
-               "which hurts a little, and a guard is called to search them. Crooked guards and crates are "
+               "and a guard is called to search them. Crooked guards and crates are "
                "searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched "
                "leaves the room.")
     scanner = ("Stands on the floor of a Contraband Checkpoint room and catches crooked guards. A crooked guard who "

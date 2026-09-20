@@ -1,5 +1,5 @@
 object_MedicalProbeMachine                    Contraband Scanner
-buildtoolbar_popup_obj_MedicalProbeMachine    Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is scanned, which hurts a little, and a guard is called to search them. Crooked guards and crates are searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched leaves the room.
+buildtoolbar_popup_obj_MedicalProbeMachine    Runs the Contraband Checkpoint room it stands in. Every prisoner who steps into the room is scanned, and a guard is called to search them. Crooked guards and crates are searched too, and anyone carrying a crate sets it down to be searched. Nobody unsearched leaves the room.
 object_RoomScanner                            Guard Scanner
 buildtoolbar_popup_obj_RoomScanner            Stands on the floor of a Contraband Checkpoint room and catches crooked guards. A crooked guard who comes to search in the room searches as an honest one would, so a bribe buys nothing, and comes out of the job exposed.
 room_stripsearch                              Contraband Checkpoint

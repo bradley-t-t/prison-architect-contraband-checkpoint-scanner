@@ -19,8 +19,7 @@ kind of script. It checks, over every seed, that nobody and no crate gets
 more than a step out of the room before their search is done, that nothing
 leaves the room still carrying contraband, that everyone
 reaches the far end in the end, that with no guards at all the timeout still
-gets everyone through, that every prisoner is hurt once a visit and
-no more, and that everybody has their own name back afterwards.
+gets everyone through, that the scan hurts nobody, and that everybody has their own name back afterwards.
 
 Usage: python simulate.py [seeds]   (needs the lupa package)
 """
@@ -50,7 +49,6 @@ ROOM_ID = 7
 # How far out of the room anyone unsearched may be seen: a quarter second's
 # walk between two looks, and a little over.
 LEASH = 0.75
-INJURY = 0.05
 
 
 def luafn(L, f):
@@ -428,7 +426,7 @@ def run(seed, guards=True):
             failures.append("the escorted prisoner never arrived (y %.1f)" % m.y)
         if m.kind == "Prisoner":
             hurt = m.props.get("Damage") or 0
-            if abs(hurt - INJURY * m.visits) > 1e-6 or m.visits != 1:
+            if hurt != 0 or m.visits != 1:
                 failures.append("Prisoner %d hurt %.2f over %d visits" % (m.id, hurt, m.visits))
     for g in world.guards:
         if g.props.get("Name"):
