@@ -39,7 +39,7 @@ LAMPS = [
     dict(core=(84, 220, 120), hot=(200, 255, 215)),
     dict(core=(235, 64, 64), hot=(255, 200, 200)),
 ]
-SHEET_CELLS = (8, 2)
+SHEET_CELLS = (6, 2)                # three pictures two cells wide and nothing spare: 192 x 64
 PRICE = 500
 SCANNER_PRICE = 800
 SCANNER_CELL = 4             # where the Guard Scanner sits on the sheet, in cells
