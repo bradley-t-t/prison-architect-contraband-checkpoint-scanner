@@ -733,26 +733,3 @@ function Update(timePassed)
         scanEvery = (anyone or next(records) ~= nil) and SCAN_INTERVAL or IDLE_INTERVAL
     end
 end
-
--- The game hands a script every object a search finds as a global named for
--- the object's type and id, and never takes one back, so a script that
--- searches holds on to everyone it has ever found. Every FORGET_EVERY seconds
--- those globals are cleared, and Lua's own collector frees what they held.
--- Objects the script still has in a local stay usable.
-local FORGET_EVERY = 20
-local forgetTimer = math.random() * FORGET_EVERY
-local runUpdate = Update
-function Update(timePassed)
-    forgetTimer = forgetTimer + timePassed
-    if forgetTimer >= FORGET_EVERY then
-        forgetTimer = 0
-        if _G ~= nil then
-            for name, value in pairs(_G) do
-                if type(value) == "table" and type(name) == "string" and name:find("i%-?%d+u%-?%d+$") then
-                    _G[name] = nil
-                end
-            end
-        end
-    end
-    return runUpdate(timePassed)
-end
