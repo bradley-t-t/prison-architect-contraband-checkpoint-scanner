@@ -734,17 +734,25 @@ function Update(timePassed)
     end
 end
 
--- Every scripted object is a Lua state of its own, and what a script drops
--- stays in memory until a collection runs. A full one every GC_EVERY seconds
--- keeps a long session from piling it up. The state is small, so it is cheap.
-local GC_EVERY = 20
-local gcTimer = math.random() * GC_EVERY
+-- The game hands a script every object a search finds as a global named for
+-- the object's type and id, and never takes one back, so a script that
+-- searches holds on to everyone it has ever found. Every FORGET_EVERY seconds
+-- those globals are cleared, and Lua's own collector frees what they held.
+-- Objects the script still has in a local stay usable.
+local FORGET_EVERY = 20
+local forgetTimer = math.random() * FORGET_EVERY
 local runUpdate = Update
 function Update(timePassed)
-    gcTimer = gcTimer + timePassed
-    if gcTimer >= GC_EVERY then
-        gcTimer = 0
-        if collectgarbage then collectgarbage("collect") end
+    forgetTimer = forgetTimer + timePassed
+    if forgetTimer >= FORGET_EVERY then
+        forgetTimer = 0
+        if _G ~= nil then
+            for name, value in pairs(_G) do
+                if type(value) == "table" and type(name) == "string" and name:find("i%-?%d+u%-?%d+$") then
+                    _G[name] = nil
+                end
+            end
+        end
     end
     return runUpdate(timePassed)
 end
