@@ -733,3 +733,18 @@ function Update(timePassed)
         scanEvery = (anyone or next(records) ~= nil) and SCAN_INTERVAL or IDLE_INTERVAL
     end
 end
+
+-- Every scripted object is a Lua state of its own, and what a script drops
+-- stays in memory until a collection runs. A full one every GC_EVERY seconds
+-- keeps a long session from piling it up. The state is small, so it is cheap.
+local GC_EVERY = 20
+local gcTimer = math.random() * GC_EVERY
+local runUpdate = Update
+function Update(timePassed)
+    gcTimer = gcTimer + timePassed
+    if gcTimer >= GC_EVERY then
+        gcTimer = 0
+        if collectgarbage then collectgarbage("collect") end
+    end
+    return runUpdate(timePassed)
+end
