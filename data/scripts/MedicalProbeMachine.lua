@@ -182,6 +182,8 @@ local function cellRoom(cell)
     return number(cell["Room.i"], -1)
 end
 
+local STEPS = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+
 -- The room is every tile zoned with the machine's, reached from it a step
 -- at a time.
 local function mapRoom()
@@ -200,7 +202,7 @@ local function mapRoom()
         while head <= #queue and count < MAX_ROOM_TILES do
             local x, y = queue[head][1], queue[head][2]
             head = head + 1
-            for _, step in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+            for _, step in ipairs(STEPS) do
                 local nx, ny = x + step[1], y + step[2]
                 local key = tileKey(nx, ny)
                 if tiles[key] == nil and cellRoom(World.GetCell(nx, ny)) == home then
@@ -692,6 +694,32 @@ local function showTooltip(waiting)
     end
 end
 
+-- The game hands a script every object a search finds as a global named for
+-- the object's type and id, and never takes one back, so a machine that the
+-- whole prison walks past holds on to everyone who ever did, and Lua's
+-- collector walks all of them on every pass. Every FORGET_EVERY seconds those
+-- globals are cleared, just before a look fetches everyone in reach afresh.
+-- Reading a property of an object goes through its global, so the people the
+-- machine still keeps a record of and the guards whose jobs it is following
+-- keep theirs.
+local FORGET_EVERY = 20
+local forgetTimer = math.random() * FORGET_EVERY
+
+local function forget()
+    if _G == nil then
+        return
+    end
+    for name, value in pairs(_G) do
+        if type(value) == "table" and type(name) == "string" then
+            local id = string.match(name, "i(%-?%d+)u%-?%d+$")
+            id = id and tonumber(id)
+            if id ~= nil and records[id] == nil and guardJobs[id] == nil then
+                _G[name] = nil
+            end
+        end
+    end
+end
+
 function Create()
     mapRoom()
     showTooltip(0)
@@ -704,10 +732,15 @@ function Update(timePassed)
         layoutTimer = 0
         mapRoom()
     end
+    forgetTimer = forgetTimer + timePassed
     scanTimer = scanTimer + timePassed
     if scanTimer >= scanEvery then
         local elapsed = scanTimer
         scanTimer = 0
+        if forgetTimer >= FORGET_EVERY then
+            forgetTimer = 0
+            forget()
+        end
         local outside, anyone = scanPeople()
         local waiting = watchSearches(elapsed)
         enforce(outside)
