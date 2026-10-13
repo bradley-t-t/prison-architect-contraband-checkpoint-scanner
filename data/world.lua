@@ -2,11 +2,17 @@
 -- this script and to no object's own script, so a Contraband Scanner
 -- cannot ask for a guard search itself. It leaves word instead, in the one
 -- place both scripts can reach: every object has a Name a script can look
--- it up by. A machine wanting searches names itself CALL_NAME and names each
--- person to be searched MARK_PREFIX followed by their id. This script looks
--- for a machine by that name, asks the game to search everyone near it who
--- carries the mark, and clears the names again. The cleared mark tells the
--- machine the search has been asked for.
+-- it up by. A machine wanting searches names itself CALL_NAME, names each
+-- person to be searched MARK_PREFIX followed by their id, and lists those
+-- ids in WANTED. This script looks for a machine by that name, looks each
+-- person on its list up by their mark, asks the game to search them, and
+-- clears the names again. The cleared mark tells the machine the search has
+-- been asked for.
+--
+-- A search of the map hands back a full record of everyone it finds, so
+-- the ground round a machine is searched for marks only once a minute, for
+-- any mark no machine listed: one left from before a save, or by a machine
+-- taken down since.
 --
 -- Nothing here may call the game's campaign commands (Game.SetNeeds and the
 -- rest of that family). Outside the campaign they crash the game.
@@ -24,8 +30,15 @@ local REACH = 32
 local MAX_CALLS = 8
 -- Everything a machine ever asks to have searched.
 local KINDS = { "Prisoner", "Guard", "Box", "Stack" }
+-- Where a machine lists the ids it has marked, separated by commas.
+local WANTED = "StripSearchWanted"
+-- Seconds between searches round one machine for marks it did not list.
+local SWEEP_EVERY = 60
 
 local timer = 0
+local clock = 0
+-- Machine id -> the clock at the last search round it.
+local sweptAt = {}
 
 local function isMark(name)
     return type(name) == "string" and string.sub(name, 1, #MARK_PREFIX) == MARK_PREFIX
@@ -45,13 +58,36 @@ local function clearOldNames(machine)
     end
 end
 
-local function answer(machine)
+local function request(obj)
+    WorkQueue.Request("SearchObject", obj)
+    Object.SetProperty(obj, "Name", "")
+end
+
+-- Every mark within REACH of the machine, found by searching for everyone
+-- of each kind a machine asks to have searched.
+local function sweep(machine)
     clearOldNames(machine)
     for _, kind in ipairs(KINDS) do
         for obj, _ in pairs(Object.GetNearbyObjects(machine, kind, REACH) or {}) do
             if isMark(Object.GetProperty(obj, "Name")) then
-                WorkQueue.Request("SearchObject", obj)
-                Object.SetProperty(obj, "Name", "")
+                request(obj)
+            end
+        end
+    end
+end
+
+local function answer(machine)
+    local id = machine.Id and tonumber(machine.Id.i) or -1
+    if sweptAt[id] == nil or clock - sweptAt[id] >= SWEEP_EVERY then
+        sweptAt[id] = clock
+        sweep(machine)
+    end
+    local wanted = Object.GetProperty(machine, WANTED)
+    if wanted ~= nil then
+        for each in string.gmatch(tostring(wanted), "[^,]+") do
+            local obj = Game.GetObject(MARK_PREFIX .. each)
+            if obj ~= nil and isMark(Object.GetProperty(obj, "Name")) then
+                request(obj)
             end
         end
     end
@@ -62,6 +98,7 @@ function Init()
 end
 
 function Update(timePassed)
+    clock = clock + (tonumber(timePassed) or 0)
     timer = timer + (tonumber(timePassed) or 0)
     if timer < POLL then
         return

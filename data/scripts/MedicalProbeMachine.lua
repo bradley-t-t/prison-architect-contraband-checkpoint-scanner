@@ -8,9 +8,10 @@
 -- someone's arms. The game's own guard search is the only thing that takes
 -- contraband off a person, so that is what is asked for. No object's script
 -- is given the work queue, so the machine leaves word for the mod's world
--- script (data/world.lua): it names itself CALL_NAME and names each person
--- to be searched MARK_PREFIX followed by their id, and the world script
--- asks the game for those searches and clears the names.
+-- script (data/world.lua): it names itself CALL_NAME, names each person to
+-- be searched MARK_PREFIX followed by their id and lists those ids in
+-- WANTED, and the world script asks the game for those searches and clears
+-- the names.
 --
 -- The game will not search anything in someone's arms, so whoever carries
 -- an unsearched crate into the room, or escorts an unsearched prisoner into
@@ -41,6 +42,17 @@ local SCAN_INTERVAL = 0.25
 -- With nobody in reach the machine looks this often instead. Reach runs
 -- MARGIN tiles past the room, more than anyone walks in that time.
 local IDLE_INTERVAL = 1
+-- A look is a search of the map, and a search hands back a full record of
+-- everything it finds, built for the script there and then: the dearest
+-- thing a script can ask for, and paid again for everyone still standing
+-- where the last look found them. So the machine looks this often, out to
+-- MARGIN tiles past its reach, and between looks it follows what the last
+-- look found, reading each of them where they stand now. Anyone in reach
+-- was in the last look, since nobody walks MARGIN tiles in that time. A
+-- crate can also appear out of another, when a stack is split, so a crate
+-- the last look found that has been split, merged or taken down brings the
+-- next look forward to the moment it is seen.
+local LOOK_EVERY = 1
 local LAYOUT_RECHECK = 30
 local MAX_ROOM_TILES = 400
 -- How far past the room's edge people are looked for.
@@ -70,6 +82,7 @@ local CARRIER_SEARCH_EVERY = 2
 local SCANNER = "RoomScanner"
 local CALL_NAME = "StripSearchCall"
 local MARK_PREFIX = "StripSearchTarget"
+local WANTED = "StripSearchWanted"
 local DEBUG = false
 
 -- Everyone who can walk.
@@ -123,6 +136,12 @@ local records = {}
 -- from where the guard was going, both keyed by the person's id }.
 local guardJobs = {}
 local guards = {}
+-- Everything the last look found, followed until the next one:
+--   { obj, id, kind, crate, quantity }
+local followed = nil
+local lookTimer = 0
+-- The ids last listed in WANTED.
+local listed = nil
 local lastProgress = 0
 local lastRequest = 0
 local lastCarrierSearch = -CARRIER_SEARCH_EVERY
@@ -419,23 +438,106 @@ local function carrierOf(carrierId, range, everyone)
     return everyone[carrierId], everyone
 end
 
+-- A search of the map for each of the kinds given, out to MARGIN tiles past
+-- the reach. Everything it finds is followed until the next look, and every
+-- crate with how much it held and where it stood. A look for crates alone
+-- keeps following everyone else the last look found.
+local function look(range, kinds)
+    local found = {}
+    if kinds ~= WATCHED_KINDS then
+        for _, entry in ipairs(followed) do
+            if not entry.crate then
+                found[#found + 1] = entry
+            end
+        end
+    end
+    for _, kind in ipairs(kinds) do
+        local crate = isCrateKind(kind)
+        for obj, _ in pairs(Find(kind, range + MARGIN) or {}) do
+            local entry = { obj = obj, id = objectId(obj), kind = kind, crate = crate }
+            if crate then
+                entry.quantity = Get(obj, "Quantity")
+                entry.x, entry.y = position(obj)
+            end
+            found[#found + 1] = entry
+        end
+    end
+    followed = found
+end
+
+-- Whether anything standing at (x, y) could be in the room before the next
+-- look: within two margins of one of its tiles, one for how far it can go
+-- before then and one for how far it may have gone since it was last seen.
+local function nearRoom(x, y)
+    local reach = 2 * MARGIN
+    local cx, cy = math.floor(x), math.floor(y)
+    for dx = -reach, reach do
+        for dy = -reach, reach do
+            if roomTiles[tileKey(cx + dx, cy + dy)] == true then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Whether a crate the last look found has been taken down, split or merged
+-- since, any of which can leave a crate standing that the look never saw.
+-- Only a crate near enough the room for that one to be in it before the next
+-- look counts. Anything further off is found by that look, the way anyone
+-- walking in is, and a room beside a canteen or a laundry would otherwise be
+-- looked round again every time somebody took a tray or a uniform.
+local function cratesChanged()
+    for _, entry in ipairs(followed) do
+        if entry.crate and not entry.settled then
+            local ok, x, y = pcall(position, entry.obj)
+            if not ok or x == nil or y == nil then
+                if entry.x == nil or nearRoom(entry.x, entry.y) then
+                    return true
+                end
+                entry.settled = true
+            else
+                entry.x, entry.y = x, y
+                local quantity = Get(entry.obj, "Quantity")
+                if quantity ~= entry.quantity then
+                    if nearRoom(x, y) then
+                        return true
+                    end
+                    entry.quantity = quantity
+                end
+            end
+        end
+    end
+    return false
+end
+
 -- Everyone who matters within reach of the room: prisoners, the guards who
 -- search, and crates. Nobody else is ever searched or held, so nobody else
 -- is looked for. Someone inside is recorded, and their place inside
 -- remembered. Someone outside is looked at only if already kept. The dead
 -- are ignored. Returns the ids of everyone recorded who is now outside, and
 -- whether anyone at all was in reach.
-local function scanPeople()
+local function scanPeople(looking)
     local range = roomReach + MARGIN
+    if looking or followed == nil then
+        look(range, WATCHED_KINDS)
+    elseif cratesChanged() then
+        -- nobody comes out of a crate, so only crates are looked for
+        look(range, CRATES)
+    end
+    local mx, my = position(this)
     guards = {}
     local outside, anyone = {}, false
-    for _, kind in ipairs(WATCHED_KINDS) do
-        local crate = isCrateKind(kind)
-        for obj, _ in pairs(Find(kind, range) or {}) do
-            local x, y = position(obj)
-            local id = objectId(obj)
+    for _, entry in ipairs(followed) do
+        local obj, id, kind, crate = entry.obj, entry.id, entry.kind, entry.crate
+        -- Where it stands now. Something taken down stands nowhere, and
+        -- something further off than the reach is out of it, just as a
+        -- search of the reach would have it.
+        local ok, x, y = pcall(position, obj)
+        if ok and x ~= nil and y ~= nil and mx ~= nil
+            and (x - mx) * (x - mx) + (y - my) * (y - my) <= range * range then
             local stored = false
-            if x ~= nil and id ~= nil then
+            if id ~= nil then
                 local known = records[id] ~= nil
                 local within = inside(x, y)
                 if crate and number(Get(obj, "CarrierId.i"), -1) >= 0
@@ -539,6 +641,25 @@ local function requestSearches(pending)
     lastRequest = clock
 end
 
+-- Lists the id of everyone marked and not yet answered in WANTED, for the
+-- world script to look each of them up by their mark, in the order its own
+-- sweep asks for searches: prisoners, then guards, then crates.
+local function list(unanswered)
+    local ids = {}
+    for _, kind in ipairs(WATCHED_KINDS) do
+        for _, record in ipairs(unanswered) do
+            if record.kind == kind then
+                ids[#ids + 1] = tostring(record.id)
+            end
+        end
+    end
+    local text = table.concat(ids, ",")
+    if text ~= listed then
+        listed = text
+        Set(this, WANTED, text)
+    end
+end
+
 -- A guard's job has ended. The time they spent at it is kept for everyone
 -- they could have been searching, with how far each was from where the
 -- guard was going. A person's search takes ten seconds and a crate's five,
@@ -595,9 +716,11 @@ local function watchSearches(elapsed)
         requestSearches(unasked)
     end
     local waiting = false
+    local unanswered = {}
     for _, record in ipairs(pending) do
         if record.marked ~= nil and not acknowledged(record) then
             waiting = true
+            unanswered[#unanswered + 1] = record
         end
     end
     local seen, progress = {}, false
@@ -656,6 +779,9 @@ local function watchSearches(elapsed)
             guardJobs[id] = nil
         end
     end
+    if waiting then
+        list(unanswered)
+    end
     if waiting and nameOf(this) ~= CALL_NAME then
         this.Name = CALL_NAME
     end
@@ -698,7 +824,8 @@ end
 -- the object's type and id, and never takes one back, so a machine that the
 -- whole prison walks past holds on to everyone who ever did, and Lua's
 -- collector walks all of them on every pass. Every FORGET_EVERY seconds those
--- globals are cleared, just before a look fetches everyone in reach afresh.
+-- globals are cleared, just before a look fetches everything it follows
+-- afresh.
 -- Reading a property of an object goes through its global, so the people the
 -- machine still keeps a record of and the guards whose jobs it is following
 -- keep theirs.
@@ -731,17 +858,35 @@ function Update(timePassed)
     if layoutTimer >= LAYOUT_RECHECK then
         layoutTimer = 0
         mapRoom()
+        -- the room may have changed since the last look
+        followed = nil
     end
     forgetTimer = forgetTimer + timePassed
+    lookTimer = lookTimer + timePassed
     scanTimer = scanTimer + timePassed
     if scanTimer >= scanEvery then
         local elapsed = scanTimer
         scanTimer = 0
-        if forgetTimer >= FORGET_EVERY then
-            forgetTimer = 0
-            forget()
+        local looking = followed == nil or lookTimer >= LOOK_EVERY
+        if looking then
+            lookTimer = 0
+            if forgetTimer >= FORGET_EVERY then
+                forgetTimer = 0
+                forget()
+            end
         end
-        local outside, anyone = scanPeople()
+        local outside, anyone = {}, false
+        if zoned or next(records) ~= nil then
+            outside, anyone = scanPeople(looking)
+        else
+            -- With no room nobody can come in to be searched, and with
+            -- nobody kept there is nobody to hold, so nothing is looked for
+            -- until the room is zoned again. The machine keeps its quick
+            -- step all the same, so a room zoned again is taken up as soon
+            -- as it would have been.
+            followed = nil
+            anyone = true
+        end
         local waiting = watchSearches(elapsed)
         enforce(outside)
         showTooltip(waiting)
